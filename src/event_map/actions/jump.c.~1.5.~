@@ -1,0 +1,295 @@
+
+#include <string.h>
+#include <stdio.h>
+#include <alsa/asoundlib.h>
+
+#include "../../include.h"
+
+#define JUMP_SCOPE_TEST 1
+#define JUMP_SCOPE_MAP 2
+#define JUMP_SCOPE_RTOBJECT 3
+#define JUMP_SCOPE_CHILD 4
+#define JUMP_SCOPE_MEMBERS 5
+
+#define JUMP_MEMBERS_ALL 1
+#define JUMP_MEMBERS_OUTS 2
+#define JUMP_MEMBERS_INS 3
+#define JUMP_MEMBERS_SRCS 4
+#define JUMP_MEMBERS_EFX 5
+
+char* action_get_argv_jump(map_action_t* action, int arg_index, rtobject_t *rtobj){
+  rtobject_t* rtobj;
+  char *ret;
+
+  if (arg_index < 0) return 0;
+
+  switch (action->args.int_args.arg1){
+
+  case JUMP_SCOPE_TEST:
+    
+    if (arg_index == 0)
+      return strdup("test");
+    if (arg_index == 1){
+      if (!(ret = (char*)malloc(7*sizeof(char))))
+	return 0;
+      sprintf(ret, "%d", action->args.int_args.arg2);
+      return ret;
+    }
+
+    break;
+  case JUMP_SCOPE_MAP:
+
+    if (arg_index == 0)
+      return strdup("map");
+    if (arg_index == 1){
+      if (!(ret = (char*)malloc(7*sizeof(char))))
+	return 0;
+      sprintf(ret, "%d", action->args.int_args.arg2);
+      return ret;
+    }
+
+    break;
+  case JUMP_SCOPE_RTOBJECT:
+
+    if (arg_index == 0)
+      return strdup("rtobject");
+    if (arg_index == 1){
+
+      if (!(rtobj = get_rtobject_from_address(action->args.int_args.arg2)))
+	return 0;
+
+      return rtobject_get_absolute_pathname(rtobj);
+
+    }
+
+    break;
+  case JUMP_SCOPE_CHILD:
+
+    if (arg_index == 0)
+      return strdup("child");
+    if (arg_index == 1){
+
+      if (!(rtobj = get_rtobject_from_address(action->args.int_args.arg2)))
+	return 0;
+      
+      return strdup(rtobject_get_name(rtobj));
+
+    }
+
+    break;
+  case JUMP_SCOPE_MEMBERS:
+
+    return 0;
+
+    break;
+
+  }
+ 
+  return 0;
+}
+
+int action_init_jump(ev_route_frame_t* frame, int argc, char **argv){
+  rtobject_t* target_rtobj;
+  int target;
+
+  if (argc < 3){
+    printf("init args jump error: need more args, need scope & target\n");
+    return -1;
+  }
+
+  if (!(strcmp("test", argv[1]))){
+
+    frame->action->args.int_args.arg1 = JUMP_SCOPE_TEST;
+    
+    if (!(string_is_number(argv[2]))){
+      printf("init args jump error: target must be a number, you entered %s\n", argv[2]);
+      return -1;
+    }
+
+    target = atoi(argv[2]);
+
+    if ((target < 0)||(event_map_get_test_list_size(frame->map) <= target)){
+      printf("init args jump error: invalid target test index: %d\n", target);
+      return -1;
+    }
+    
+    frame->action->args.int_args.arg2 = target;
+
+    return 0;
+
+  }else 
+
+  if (!(strcmp("map", argv[1]))){
+
+    frame->action->args.int_args.arg1 = JUMP_SCOPE_MAP;
+
+    if (!(string_is_number(argv[2]))){
+      printf("init args jump error: target must be a number, you entered %s\n", argv[2]);
+      return -1;
+    }
+
+    target = atoi(argv[2]);
+
+    if ((target < 0)||(rtobject_get_map_list_size(frame->rtobj) <= target)){
+      printf("init args jump error: invalid target map index: %d\n", target);
+      return -1;
+    }
+    
+    frame->action->args.int_args.arg2 = target;
+
+    return 0;
+
+  }else 
+
+  if (!(strcmp("rtobject", argv[1]))){
+
+    frame->action->args.int_args.arg1 = JUMP_SCOPE_RTOBJECT;
+
+
+    if (!(target_rtobj = get_rtobject_from_path(argv[2]))){
+      printf("init args jump error: couldn't find rtobject %s\n",argv[2]);
+      return -1;
+    }
+
+    frame->action->args.int_args.arg2 = rtobject_get_address(target_rtobj);
+
+    return 0;
+
+  }else
+
+  if (!(strcmp("child", argv[1]))){
+
+    frame->action->args.int_args.arg1 = JUMP_SCOPE_CHILD;
+ 
+    /*first, make sure this is a signal path*/
+    if (RTOBJECT_MAJOR_TYPE_SIGNAL_PATH != rtobject_get_major_type(frame->rtobj)){
+      printf("init args jump error: this rtobject is not a signal path so it has no children\n");
+      return -1;
+    }
+
+    if (!(target_rtobj = signal_path_get_rtobject_from_name((const signal_path_t*)frame->rtobj->imp_struct, argv[2]))){
+      printf("jump action init error: couldn't find rtobject %s\n", argv[2]);
+      return -1;
+    }
+
+    frame->action->args.int_args.arg2 = rtobject_get_address(target_rtobj);
+
+    return 0;
+    
+  }else
+
+  if (!(strcmp("members", argv[1]))){
+
+    frame->action->args.int_args.arg1 = JUMP_SCOPE_MEMBERS;
+ 
+    return 0;
+    
+  }
+
+  else{
+
+    printf("init args jump error: invalid jump scope, %s\n", argv[1]);
+    printf("some valid scopes are: 'test', 'map', 'rtobject' and 'members'\n");
+    return -1;
+
+  }
+
+  return -1;
+}
+
+int action_cb_jump(snd_seq_event_t *ev, ev_route_frame_t *frame){
+
+
+  switch (frame->action->args.int_args.arg1){
+
+  case JUMP_SCOPE_TEST:
+
+    /*set frame flag to restart test loop after this action*/
+    frame->flags = 1;
+
+    /*point frame to target test*/
+    if (!(frame->test = \
+	  (map_test_t*)generic_array_get_element_pointer(frame->map->test_array,
+							 frame->action->args.int_args.arg2))){
+      /*setting map to zero will make sure this event is dropped*/
+      frame->map = 0;
+      return 0;
+    }
+    
+    break;
+  case JUMP_SCOPE_MAP:
+
+    /*set frame flag to restart test loop after this action*/
+    frame->flags = 1;
+
+    /*get target map*/
+    if (rtobject_get_map(frame->rtobj,\
+			 &frame->map, \
+			 frame->action->args.int_args.arg2) < 0){
+      /*setting map to zero will make sure this event is dropped*/
+      frame->map = 0;
+      return 0;
+    }
+    
+    /*get first test*/
+    frame->test = \
+      (map_test_t*)generic_array_get_data_pointer(frame->map->test_array);
+
+    break;
+  case JUMP_SCOPE_RTOBJECT:
+
+    /*set frame flag to restart test loop after this action*/
+    frame->flags = 1;
+
+    /*get target rtobject from address stored in action args*/
+    if (!(frame->rtobj = \
+	  get_rtobject_from_address(frame->action->args.int_args.arg2))){
+      /*setting map to zero will make sure this event is dropped*/
+      frame->map = 0;
+      return 0;
+    }
+    
+    /*get first map*/
+    if (rtobject_get_map(frame->rtobj, &frame->map, 0) < 0){
+      /*setting map to zero will make sure this event is dropped*/
+      frame->map = 0;
+      return 0;
+    }
+    
+    /*get first test*/
+    frame->test = \
+      (map_test_t*)generic_array_get_data_pointer(frame->map->test_array);
+   
+    break;
+  case JUMP_SCOPE_CHILD:
+
+    /*set frame flag to restart test loop after this action*/
+    frame->flags = 1;
+
+    /*get target rtobject from address stored in action args*/
+    if (!(frame->rtobj = \
+	  get_rtobject_from_address(frame->action->args.int_args.arg2))){
+      /*setting map to zero will make sure this event is dropped*/
+      frame->map = 0;
+      return 0;
+    }
+    
+    /*get first map*/
+    if (rtobject_get_map(frame->rtobj, &frame->map, 0) < 0){
+      /*setting map to zero will make sure this event is dropped*/
+      frame->map = 0;
+      return 0;
+    }
+    
+    /*get first test*/
+    frame->test = \
+      (map_test_t*)generic_array_get_data_pointer(frame->map->test_array);
+   
+    break;
+  default:
+
+    break;
+  }
+
+  return 0;
+}

@@ -1,0 +1,503 @@
+/*
+ * soundtank internal commands code: set (control values, & other things)
+ *
+ * Copyright 2003-2004 Jacob Robbins
+ *
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+ */
+
+
+#include <stdlib.h>
+#include <string.h>
+#include <popt.h>
+
+#include "../include.h"
+#include "../soundtank_structs.h"
+
+
+
+void soundtank_command_set(int argc, char** argv){
+  rtobject_t* obj;
+  int index, ins_index, i;
+  float set_value;
+  node_t* temp_node;
+  ll_head results;
+  rtobject_instance_t* curr_ins;
+
+  results=0;
+
+  /*handle help message*/
+  for (i=0;i<argc;++i){
+    if ((!strcmp(argv[i],"-h"))||(!(strcmp(argv[i],"--help")))){
+      printf("explanation: set is used to set assorted rtobject properties\n");
+      printf("note: set is _not_ for realtime/live control, use event maps\n");
+      printf("useage: set rt-error [loud|quiet|off] : controls display of realtime errors\n");
+      printf("useage: set debug [on|off] : controls Soundtank's readout verbosity\n");
+      printf("useage: set rtobject -i|-ins|--instance instance-count : set # of instances\n");
+      printf("useage: set rtobject [instance-#] control value : change a control, can specify control# or name\n");
+      return;
+    }
+  }
+
+  /*handle realtime error display level*/
+  if ((argc > 1)&&((!(strcmp(argv[1],"rt-error")))||\
+		    (!(strcmp(argv[1],"rt-err"))))){
+
+    if (argc < 3){
+      printf("set rt-error: not enough arguments, try loud, quiet or off\n");
+      return;
+    }
+
+    if (!(strcmp(argv[2],"loud"))) rt_error_readout = RT_ERROR_READOUT_LOUD;
+    else if (!(strcmp(argv[2],"quiet"))) rt_error_readout = RT_ERROR_READOUT_QUIET;
+    else if (!(strcmp(argv[2],"off"))) rt_error_readout = RT_ERROR_READOUT_OFF;
+
+    return;
+  }
+ 
+  /*handle debug readout toggle*/
+  /*if ((!strcmp(argv[1],"verbose"))||(!strcmp(argv[1],"debug"))){*/
+  if ((argc > 1)&&(!(strcmp(argv[1],"debug")))){
+
+    if (argc < 3){
+      debug_readout = 1;
+      return;
+    }
+
+    if (!(strcmp(argv[2],"on"))) debug_readout = 1;
+    else if (!(strcmp(argv[2],"off"))) debug_readout = 0;
+
+    return;
+  }
+
+  /*need at least an object, a control and a value*/
+  if (argc < 4){
+    printf("set error: not enough arguments\n");
+    return;
+  }
+  
+  /*find the object*/
+  if (!(obj = get_rtobject_from_path(argv[1]))){
+    printf("set error: could not find rtobject %s\n",argv[1]);
+    return;
+  }
+
+
+  /*handle changing instance count*/
+  /*   set rtobject -[ i | --instance | -ins ] num-instances */
+  if ((argc >  3)&&((!strcmp("-i",argv[2]))||(!strcmp("-ins",argv[2]))||(!strcmp("--instance",argv[2])))){
+    int set_ins_count,curr_ins_count,i;
+
+    /*can't handle sigpaths yet*/
+    if ((RTOBJECT_MAJOR_TYPE_SIGNAL_PATH == rtobject_get_major_type(obj))){
+      printf("sorry: code to set instance count for signal path not written yet\n");
+      return;
+    }
+
+    /*parse set instance count*/
+    set_ins_count = atoi(argv[3]);
+
+    /*get current number of instances*/
+    curr_ins_count = rtobject_get_instance_list_size(obj);
+
+    if (curr_ins_count < set_ins_count){
+
+      for (i=curr_ins_count;i<set_ins_count;++i){
+
+	create_rtobject_instance(obj);
+
+      }
+
+      if ((rtobject_update_instance_situation(obj)) < 0){
+	printf("create instance error: unable to update rtobject\n");
+	return;
+      }
+
+      if ((remake_process_list()) < 0){
+	printf("create instance error: unable to update proclist\n");
+	return;
+      }
+
+    }else{
+
+      for (i=curr_ins_count;i>set_ins_count;--i){
+	
+	destroy_rtobject_instance(obj);
+
+      }
+
+      if ((remake_process_list()) < 0){
+	printf("destroy instance error: unable to update proclist\n");
+	return;
+      }
+
+
+    }
+
+    return;
+ }
+
+
+ /*handle instance specification option:  */
+ /*   set rtobject instance control value */
+ if (argc == 5){
+   
+    /*parse instance index*/
+    ins_index = atoi(argv[2]);
+    if ((ins_index < 0)||(ins_index >= rtobject_get_instance_list_size(obj))){
+      printf("set error: instance %d doesn't exist\n", ins_index);
+      return;  
+    }
+
+    /*parse control specifier*/
+    if (rtobject_search_controls(obj, argv[3], SEARCH_INITIAL_SUBSTRING, &results) <= 0){
+      printf("set error: unknown control, %s\n", argv[3]);
+      return;
+    }
+    index = *((int*)results->data);
+    rtobject_free_search_results(&results);
+
+    /*parse set-to value*/
+    set_value = atof(argv[4]);
+
+    /*find targeted instance and alter it*/
+    temp_node=obj->instance_list;
+    for (i=0;i<ins_index;++i) temp_node=temp_node->next;
+    curr_ins = (rtobject_instance_t*)temp_node->data;
+    curr_ins->control_list[index] = set_value;
+
+  }else{
+
+    /*set all of rtobject's instances*/
+    /*    set rtobject control value */
+
+    /*parse control specifier*/
+    if (rtobject_search_controls(obj, argv[2], SEARCH_INITIAL_SUBSTRING, &results) <= 0){
+      printf("set error: unknown control, %s\n", argv[2]);
+      return;
+    }
+    index = *((int*)results->data);
+    rtobject_free_search_results(&results);
+
+    /*parse set-to value*/
+    set_value = atof(argv[3]);
+  
+    /*set control value for all instances*/
+    for (temp_node=obj->instance_list;temp_node;temp_node=temp_node->next){
+    
+      curr_ins = (rtobject_instance_t*)temp_node->data;
+    
+      curr_ins->control_list[index] = set_value;
+    
+    }
+  
+  }
+  
+}
+
+void soundtank_command_activate(int argc, char** argv){
+  rtobject_t* obj;
+  node_t* temp_node;
+  rtobject_instance_t* curr_ins;
+  int i,val;
+
+  /*handle help message*/
+  for (i=0;i<argc;++i){
+    if ((!strcmp(argv[i],"-h"))||(!(strcmp(argv[i],"--help")))){
+      printf("explanation: activate is used to set rtobject control 0\n");
+      printf("explanation: this controls whether an rtobject's instances are live\n"); 
+      printf("note: activate is _not_ for realtime/live control, use input objects\n");
+      printf("useage: [activate|act|a] rtobject : activates an rtobject's instances\n");
+      printf("useage: [deactivate|deact|d] rtobject : deactivates an rtobject's instances\n");
+      return;
+    }
+  }
+ 
+  /*need at least an object*/
+  if (argc < 2){
+    printf("activate error: not enough arguments\n");
+    return;
+  }
+  
+  /*find the object*/
+  if (!(obj = get_rtobject_from_path(argv[1]))){
+    printf("activate error: could not find rtobject %s\n",argv[1]);
+    return;
+  }
+
+  if ((rtobject_get_control_list_size(obj)) < 1){
+    printf("activate error: rtobject %s doesn't have enough controls\n",rtobject_get_name(obj));
+    return;
+  }
+
+  /*find value to set*/
+  if ( (!(strcmp(argv[0],"deactivate")))||\
+       (!(strcmp(argv[0],"deact")))||\
+       (!(strcmp(argv[0],"da"))) )
+    val = 0;
+  else
+    val = 1;
+
+  /*set control value for all instances*/
+  for (temp_node=obj->instance_list;temp_node;temp_node=temp_node->next){
+    
+    curr_ins = (rtobject_instance_t*)temp_node->data;
+      
+    curr_ins->control_list[0] = val;
+      
+  }
+
+}
+
+
+void soundtank_command_mute(int argc, char** argv){
+  rtobject_t* obj;
+  node_t *temp_node, *curr_obj;
+  rtobject_instance_t* curr_ins;
+  int i,val;
+
+  /*handle help message*/
+  for (i=0;i<argc;++i){
+    if ((!strcmp(argv[i],"-h"))||(!(strcmp(argv[i],"--help")))){
+      printf("explanation: mute is used to set rtobject control 1\n");
+      printf("note: mute is _not_ for realtime/live control, use input objects\n");
+      printf("useage: [mute|m] rtobject : mutes an rtobject's outputs\n");
+      printf("useage: [unmute|um|u] rtobject : unmutes an rtobject's outputs\n");
+      return;
+    }
+  }
+ 
+  /*need at least an object*/
+  if (argc < 2){
+    printf("mute error: not enough arguments\n");
+    return;
+  }
+
+  /*find value to set*/
+  if ( (!(strcmp(argv[0],"unmute")))||\
+       (!(strcmp(argv[0],"um")))||\
+       (!(strcmp(argv[0],"u"))) )
+    val = 0;
+  else
+    val = 1;
+  
+  /*find the object*/
+  if (!(obj = get_rtobject_from_path(argv[1]))){
+    printf("mute error: could not find rtobject %s\n",argv[1]);
+    return;
+  }
+
+  /*see if we're dealing with a signal path*/
+  if (RTOBJECT_MAJOR_TYPE_SIGNAL_PATH == rtobject_get_major_type(obj)){
+    rtobject_t* ptr;
+
+    /*go through all members and effect only outputs*/
+    for (curr_obj=((signal_path_t*)obj->imp_struct)->object_list;\
+	   curr_obj; curr_obj=curr_obj->next){
+      
+      ptr = (rtobject_t*)curr_obj->data;
+
+      if ((RTOBJECT_MAJOR_TYPE_EXTERN_OUT == rtobject_get_major_type(ptr))||\
+	  (RTOBJECT_MAJOR_TYPE_EXTERN_OUT == rtobject_get_major_type(ptr))){
+
+	/*set control value for all instances*/
+	for (temp_node=ptr->instance_list;temp_node;temp_node=temp_node->next){
+	  
+	  curr_ins = (rtobject_instance_t*)temp_node->data;
+	  
+	  curr_ins->control_list[1] = val;
+	  
+	}
+
+      }
+      
+    }
+    
+  }else{
+    
+    /*rtobject is not a signal path*/
+    if ((rtobject_get_control_list_size(obj)) < 2){
+      printf("mute error: rtobject %s doesn't have enough controls\n",rtobject_get_name(obj));
+      return;
+    }
+    
+    /*set control value for all instances*/
+    for (temp_node=obj->instance_list;temp_node;temp_node=temp_node->next){
+      
+      curr_ins = (rtobject_instance_t*)temp_node->data;
+      
+      curr_ins->control_list[1] = val;
+      
+    }
+    
+  }
+  
+}
+
+void soundtank_command_volume(int argc, char** argv){
+  rtobject_t* obj;
+  node_t* temp_node;
+  rtobject_instance_t* curr_ins;
+  float value;
+  int i,plus_mode;
+
+  /*handle help message*/
+  for (i=0;i<argc;++i){
+    if ((!strcmp(argv[i],"-h"))||(!(strcmp(argv[i],"--help")))){
+      printf("explanation: volume is used to set rtobject control 2\n");
+      printf("note: volume is _not_ for realtime/live control, use input objects\n");
+      printf("useage: [volume|vol|v] rtobject value: set volume of rtobject's outputs\n");
+      printf("useage: [volume|vol|v] rtobject [!|.]+|-: increase/decrease volume of rtobject's outputs\n");
+      printf("note: when using ++++ or --, prefix '!' = make big changes, '.' = make little changes\n");
+       return;
+    }
+  }
+ 
+  /*need at least an object and a volume*/
+  if (argc < 3){
+    printf("volume error: not enough arguments\n");
+    return;
+  }
+
+  /*find the object*/
+  if (!(obj = get_rtobject_from_path(argv[1]))){
+    printf("volume error: could not find rtobject %s\n",argv[1]);
+    return;
+  }
+
+  /*sanity check: make sure rtobject has at least one instance*/
+  if (!obj->instance_list){
+    printf("volume error: rtobject %s doesn't have any instances to set\n",rtobject_get_name(obj));
+    return;
+  }
+
+  /*for non-signal path rtobjects*/
+  if (RTOBJECT_MAJOR_TYPE_SIGNAL_PATH != rtobject_get_major_type(obj)){
+
+    /*sanity check: make sure rtobject has a volume control*/
+    if ((rtobject_get_control_list_size(obj)) < 3){
+      printf("volume error: rtobject %s doesn't have 3 controls\n",rtobject_get_name(obj));
+      return;
+    }
+
+    /*find current volume of first instance*/
+    curr_ins = (rtobject_instance_t*)obj->instance_list->data;
+    value = curr_ins->control_list[2];
+
+  }else{
+    node_t* curr_obj;
+    rtobject_t* ptr;
+
+    value = 0;
+    
+    /*go through all members and find first output*/
+    for (curr_obj=((signal_path_t*)obj->imp_struct)->object_list;\
+	   curr_obj; curr_obj=curr_obj->next){
+      
+      ptr = (rtobject_t*)curr_obj->data;
+      
+      if ((RTOBJECT_MAJOR_TYPE_EXTERN_OUT == rtobject_get_major_type(ptr))||\
+	  (RTOBJECT_MAJOR_TYPE_LOCAL_OUT == rtobject_get_major_type(ptr))){
+		  
+	curr_ins = (rtobject_instance_t*)ptr->instance_list->data;
+	if (curr_ins){
+	  value = curr_ins->control_list[2];
+	  break;
+	}
+	
+      }
+      
+    }
+
+  }
+
+  /*parse the volume argument*/
+  if ((argv[2][0] == '+')||(argv[2][0] == '-')||(argv[2][0] == '.')||(argv[2][0] == '!')){
+    /*relative volume changes*/
+    /*parse multiplier*/
+    if (argv[2][0] == '.') plus_mode = 0.01;
+    else if (argv[2][0] == '!') plus_mode = 25;
+    else plus_mode = 1;
+			     
+    for (i=0;i<strlen(argv[2]);++i){
+      switch (argv[2][i]){	
+      case '+':
+	value += plus_mode;
+	break;
+      case '-':
+	value -= plus_mode;
+	break;
+      }
+    }
+ }else{
+   /*set volume to absolute value*/
+   value = atof(argv[2]);
+
+   /*check for user typos, don't want to accidentally mute obj*/
+   if ((value == 0)&&(argv[2][0] != '0')){
+     printf("volume error: couldn't figure out volume setting, %s\n",argv[2]);
+     return;
+   }
+
+  }
+
+  /*sanity check: no negative volumes*/
+  if (value < 0) value = 0;
+
+
+  /*for signal path, set all outputs*/
+  if (RTOBJECT_MAJOR_TYPE_SIGNAL_PATH == rtobject_get_major_type(obj)){
+    node_t* curr_obj;
+    rtobject_t* ptr;
+
+    /*go through all members and effect only outputs*/
+    for (curr_obj=((signal_path_t*)obj->imp_struct)->object_list;\
+	   curr_obj; curr_obj=curr_obj->next){
+      
+      ptr = (rtobject_t*)curr_obj->data;
+
+      if ((RTOBJECT_MAJOR_TYPE_EXTERN_OUT == rtobject_get_major_type(ptr))||\
+	  (RTOBJECT_MAJOR_TYPE_LOCAL_OUT == rtobject_get_major_type(ptr))){
+	
+	/*set control value for all instances*/
+	for (temp_node=ptr->instance_list;temp_node;temp_node=temp_node->next){
+	  
+	  curr_ins = (rtobject_instance_t*)temp_node->data;
+	  
+	  curr_ins->control_list[2] = value;
+	  
+	}
+
+      }
+      
+    }
+    
+
+
+  }else{
+
+    /*set control value for all instances*/
+    for (temp_node=obj->instance_list;temp_node;temp_node=temp_node->next){
+      
+      curr_ins = (rtobject_instance_t*)temp_node->data;
+      
+      curr_ins->control_list[2] = value;
+    
+    }
+
+  }
+
+}

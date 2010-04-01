@@ -1,0 +1,601 @@
+	
+	Soundtank Construction Journal
+
+
+April 19th, 2003: 
+
+      Soundtank made its first noise today; a sustained, high-pitched
+"eeeeeeeeee". I was hoping for a "fshshshshshs" indicating that the
+soundcard was reading random data from the unitialized buffers, but i
+an "eeeeee" is ok too.
+
+
+---many skipped entries----
+
+
+June 20th, 2003:
+
+     Today I modified the scheme for inserting an rtobject into an
+rtlist. In particular, i added a facility to signal_path's: they now
+have a pointer to the actual object list of the signal path they are
+in. The pointer actually points to their own node, which is then
+useable to refer to all their members. This came about because my
+previous model was too simplistic in dealing with data port
+attachments/detachments. This was the main flaw: when you remove an
+rtobject from an rtlist, you first take it out of the object list and
+remake that. Then you remake the process list, and lastly you
+dereference the object's buffers. So how do you know what signal path
+to dereference the object from at that point? If you have taken it out
+of the object list you can't use that. So I added another status field
+in the core rtobject struct (context_address holds the address of the
+object providing the buffer context). This goes along with
+process_index and list_index. All three are now updated with the fxn
+rtlist_remake_status_fields. Furthermore, when you remove a signal
+path from an rtlist, it will keep a reference to the cut-out section
+of linked list that was in the object list. This is so that a signal
+path still has it's structure even when not in an rtlist. You should
+be able to modify this structure "offline" as it were.
+
+July 5th, 2003
+
+
+First working audio output using framework today!!!! connected a test
+source to a local out hooked up to an alsa extern and (finally) it
+sounds an A pitch. Also had to rework the handling of signal path's
+data port connection/deconnetion. When you add a data port to a signal
+path, it will allocate a buffer if that channel is not already in
+use. What i failed to consider is that the signal path has an rtobject
+itself, and the rt thread will use the signal path object to set the
+lazy buffer flag for every context buffer. However, this means that
+you can not simply make changes to this list, but must delay them and
+synch with the rt thread. The way I solved this is not so simple. See
+signal_path.c for an explanation. 
+
+
+July 11th, 2003
+
+First successfull use of LADSPA plugin today!!! connected white noise
+and it worked. I must give kudos to the LADSPA sdk for making it easy
+to add LADSPA to an app. I basically just pulled a bunch of files
+directly from the SDK into Soundtank and made my own search callback
+to handle loading the plugins. The complete process took two days, one
+day to add the loading and a second day to notice that I had forgotten
+to check if the activate fxn is present because it is optional. 
+
+ 
+
+July 15th , 2003
+
+When writing the functionality to free rtobjects completely, I was
+confronted by some memory leaks related to the use of port description
+strings. This prompted me to try Electric Fence and, as it was easy
+enough to setup, I did. What an incredible boon! Within 20 minutes I
+had found and fixed 5 bugs that I never knew existed. I felt as a
+fisherman unexpectedly pulling in heaping nets of fish. This tool is
+an invaluable asset to developing and I don't know if you can trust a
+program that hasn't been run through Electric Fence or something
+similar. I fixed a number of bugs, some deeper, some not, all relating
+to memory. Soundtank can now get rid of rtobjects when they are done
+being used, a little late to be adding this but better late...
+
+
+July 19th, 2003
+
+Added the first XML save/load support. XML was more of a pain to add
+then LADSPA. Part of the problem is that XML supposedly uses only
+UTF-8 character encoding however libxml2 seems to give me regular C
+chars ok. Also libxml2's developer documentation is kind of
+scattershot, and their API doesn't seem to list functions in but the
+most general order. Very confusing and I'm still not sure I've done
+the right thing officially... but it works. Now I need to take care of
+signal paths correctly for this to be useful.
+
+
+July 20th to August 16th, 2003
+
+In a major overhaul of Soundtank, I added nestable signal paths and
+combined rtlists and signal paths . If you are reading this for the
+first time you probably aren't aware that Soundtank started with a
+single depth of signal paths; there were rtlists and they held signal
+paths and signal paths couldn't hold other signal paths. I knew I
+wanted to eventually make signal paths nestable but I was worried that
+figuring out the channel scoping issues would be a lot of work. Well,
+it was. After I decided I had to do it, it took 5 days to figure out the
+basic theory to handle channel scoping. The theory did not click in
+one "a-ha" like moment, instead I decided on particular facts that I
+think are right, one piece at a time.  
+
+I was pushed into doing this when I noticed a large overlap between
+rtlist code and signal path code: they both need insert, move, and
+remove functions. While theorizing the initial design in San
+Francisco, I had not ever considered that these two structures were
+essentially similar. The fact arose completely from the
+implementation. Now, the four rtlists, in, inst, fx, and out, will be
+implemented the same as user constructed paths. This was a long,
+demoralizing improvement where I just had to focus on moving the ball
+a little bit farther forward each day. Also, I made major changes to
+core code which had to be integrated into every module
+afterward. Surprisingly, integrating the changes took far less effort
+than I had anticipated; I was able to build and run Soundtank (minus
+most features) after only 2 days of integration work.
+
+
+
+Oct 24th to ?, 2003
+
+I've done a minor overhaul of the LADSPA plugin code, basically
+prettying it up, although not as much as I'd like. The loading code is
+still a hack that trolls through all the libraries loading and
+unloading them for every plugin instantiated. Most importantly, I
+added emulation for plugins that don't have the run-adding
+feature. Run-adding is a separate run function that will add the
+output values to a buffer that already has some salient data in
+it. The regular run function just overwrites all data in the output
+buffer. Because my RTPath Framework uses common buffers for channels,
+every rtobject needs to be able to work in run-adding mode. In order
+to emulate this, I created the concept of working buffers, buffers
+only used to temporarily hold LADSPA plugin output. The main soundtank
+module has a function to allocate working buffers. This function is
+quite similar to the ones to allocate free and shared buffers, with
+the difference being that you must specify a positive index when
+requesting a working buffer. The index is used to handle plugins with
+more than one output port, each port needs a distinct working
+buffer. The same working buffers are used by all LADSPA plugins. I
+just got this working today, the 30th, but discovered two problems:
+first I haven't fully thought out when, where and why the rtobject's
+update instance function is called, I wasn't calling it enough leading
+to problems. The second problem is that there's a horrible hiss on all
+the LADSPA plugins right now which is not there on the test source. I
+don't know what this is from.
+
+
+---many skipped entries----
+
+
+Nov 24, 2003
+
+I have decided to institute a convention whereby _all_ rtobjects will
+have control 0 be Mute and control 1 be Volume. (except for
+test_source which you can't turn off). For signal paths, muting will
+recursively mute all children, I think this is the behavior everyone
+would expect. Must take care not to erase previous mute state of
+children though. Consider this example: a path contains a source which
+is muted, you mute the path itself and then unmute it, does the source
+unmute? It had better not, right? So you have to implement a
+flag-based system which, using an integer, can record 127 deep whether
+its parents are muted. The mute/unmute call will now take longer
+because it must set all of these recursively. And, because the mute
+control is a float (all controls are) you have to have the parent mute
+flags integer be separate so its 2 tests for mute per instance in the
+proc fxn. But I don't think it will be that much overhead, as long as
+nothing recursive happens in the rt process fxn.
+
+
+Dec 28th, 2003
+
+Fixing up command line imp to allow for command completion. Just fixed
+a bug in utility fxn that converts strings to command argvs, bug was
+latent in previous versions, ouch!  (see util/string_to_argv.c). Need
+to make sure that rt errors don't spew garbage into the middle of the
+command line being built by the user. I think we want a trigger to
+reprint the current command. Then we handle rt errors by spewing
+garbage to screen followed by triggering for curr command
+reprint.... (Dec 30th now) !!!First imp of command-line completion!!!!
+(curr imp: tab key finds first object in current path matching last
+argument on command-line and fills out last argument for you) I have
+now figured out how to better handle the command-line: it turns out
+that the terminal your program attaches to (a virtual terminal) can be
+in one of two modes, either raw or cooked. It is usually in cooked
+mode, aka canonical mode, which means that the terminal will first
+allow the user to build and edit a full line of command input and only
+send it to the program when the user enters a newline. In this mode,
+imp of command completion is not possible. You must switch to raw mode
+where the terminal spits every keypress to you as it comes in and
+relies on you to echo it back to the screen. Aha! I did a quick imp
+using both curses and slang and have decided not to use them right now
+because activating them changes the look of the terminal a lot and is
+more stuff than I need. May have to use them eventually if I can't
+figure out how to imp erasing on the command-line. See 'man
+tcsetattr'.
+
+
+Jan 7th, 2004
+
+Did a major refactoring of the main function itself. Pulled
+initialization, command reading and command parseing out into their
+own fxns. Made a _very_ compact main() that sits as the first function
+in soundtank.c, this should make people more comfortable with reading
+the code. Also, I anticipate adding the ability to get commands from
+other apps over sockets so need to simplify and straighten out basic
+program loop first.
+
+
+Jan 10th, 2004
+
+Changed over command line handling from hand-made to using gnu
+readline library. This is easier to code, makes Soundtank's interface
+consistent with other shells', and provides many more features to the
+user. 
+
+
+---many skipped entries----
+
+Feb 14th, 2004
+
+Finished switching to a flat file XML format where rtobjects are
+stored in a simple list, one after another, sans recursion in the XML
+structures. I love kirin ichiban on this loveless valentine's day. My
+friend randal summarized it well by saying "i think [our mutual
+friend] ernest has a \"hot date\" with [our other mutual friend] neil
+tonight", and none of these guys are even computer geeks!  I'm getting
+drunk now at 3 pm and that will be trouble my friend in a few hours.
+
+The point of this entry: I used to have a special xml structure
+for signal paths which recursively stored member objects directly in
+the xml section describing the signal path rtobject. I have now fully
+abandoned that in favor of a flat file format where all rtobject XML
+nodes are direct children of the top document node. This is easier for
+humans to read, and simpler. Signal path heirarchies are saved by
+storing the absolute pathname of each rtobject into its XML
+section. 
+
+Why this deserves an entry at all: the left-most part of an absolute
+pathname may not exist when loading an rtobject from xml into a
+running Soundtank. You may have gotten the xml from a friend with a
+different setup, or you may be using a different base-tree setup
+(in,src,efx,out) than you used to. The load command will soon be able
+to attach xml rtobjects to any part of the directory heirarchy that
+you choose. !!BUT!! you still want the directory heirarchy inside the
+xml file to be recreated. You also want member objects stored inside
+the correct copy of their parent path when you load multiple copies of
+that parent path rtobject. As the xml format is now flat, I had to
+consider how to achieve this.
+
+By saving the absolute pathname of the rtobject as it was at the time
+the object was saved, we know that the group in the xml file will
+contain a self-consistent chunk of heirarchy. We are interested in two
+things from the abs pathname: the rtobject's name (rightside of last
+slash) and its path (leftside of last slash). I wrote two utility fxns
+to extract these. Then the magic happens; the
+create-rtobject-from-xml-node fxn must be given a complete list of
+bedfellows that the rtobject was saved with, then it can go through
+all of those and see if the full pathname of one of them matches the
+path part of the rtobject it's loading. If so, we'd better put our new
+rtobject into the rtobject created from that xml bedfellow. Currently,
+I require that a path occurs before its members in the xml file, but
+we could fixup soundtank to eliminate this requirement. And doesn't a
+flat file format just make you feel good? Mind-twisting recursion is
+gone and we are left with a list, sweet and simple. Sorry if this is a
+little opaque, I am drunk after all. Sayanora, maybe next time I'll of
+stopped putting off to start implementation of rt control data!  We
+can only hope. --jacob
+
+
+March 1st, 2004
+
+Last week I restructured Soundtank's directory heirarchy; everything
+that existed at the time in the project was moved into a directory
+called "src". This will allow introduction of the GNU autoconf and
+automake systems to the project, which I dread doing but must do
+before a public release can happen. It will also allow non-source code
+items, such as documentation and sample instruments, to be separated
+from source code. This way non-technical people who are afraid of
+source code can find the other stuff. 
+
+In an unrelated note, I met Geoff, co-author of Geoff & Dave's Audio
+Mixer (GDAM) last weekend (Feb 22nd) at a weekly event called Share
+that he and some other people organize at a bar called Open Air in
+Manhattan. Geoff was fairly uninterested in talking to me but seemed
+to be quite affable to other people so don't be discouraged from
+talking to him if you happen to meet him. Once again my winning
+personality comes through to help me continue a life of frustration
+and poor inter-personal relations ;) I've tried to blame my parents,
+but while visiting home this past weekend I found some old photos of
+my childhood which reminded me that I've been this way pretty much
+since birth, and probably from conception. I got a chance to see Geoff
+perform the next day in Brooklyn and he puts on a great show. He's
+dynamic in performance and displays a multitude of different sound
+control techniques that will have the computer savvy saying "how the
+fuck he do that?" like KRS One on slap them up.
+
+
+March 8th, 2004
+
+I've made it so that signal paths will pretend that certain ports of
+some of their member objects are really their own. If a signal path
+has any local outputs, it will list their output ports as its
+own. Similarly for local inputs' input ports. This makes signal paths
+useful as rtobjects on their own because they can hide their
+implementation details from the external world. 
+
+This development was interesting because it's a textbook case of why
+to use an object-oriented programming technique called data
+encapsulation. When you use data-encapsulation you have to make
+methods (functions) that handle all interaction with the actual data
+structures of a particular object, in this case the rtobject's data
+port list. This hides the implementation of the data handling from the
+external code that uses the object. 
+
+The advantage of data-encapsulation is that you can change the
+object's implementation easily and it won't mess up other code that
+uses the object. In my case I didn't do that all the way at first,
+some fxns (such as ls and rtobject_attach_port) referred directly to
+the rtobject structure's data_port_list member. This fails in the case
+of a signal path because the signal path doesn't have anything in its
+data port list. Once I fixed up all callers to use the proper methods
+to access the data port list, I was free to hack the methods to handle
+this special case. Voila.
+
+
+May 27th, 2004
+
+I hooked up an external midi controller (Oxygen8) to soundtank for the
+first time today; the first instance of real soundtank playing. I
+apologize for the missed entry that I should have done a week or two
+ago when I got event maps working, there were some noteable
+developments which I intend to document. On a humorous sidenote,
+scales are currently limited to 7 notes per octave! The user must
+create a scale in order to use a midi keyboard, however the command
+line argument parseing has a fixed cap of 12 arguments, which makes it
+impossible to create a 12 note scale because the command to create the
+scale takes up arguments and each note's pitch must be specified in an
+argument. Maybe 7 note scales are good enough? :) The way I dealt with
+scales (base midi note, base pitch & one octave's worth of fractional
+multipliers) comes from a very enlightening discussion I had with my
+cousin Krystyana's boyfriend, James, and from a great book he
+recommended me: Leonard Bernstein's lectures on music, "The Unanswered
+Question".
+
+
+June 8th, 2004
+
+I finally found a bug in my handling of LADSPA plugins that was
+causing segfaults when certain plugins were loaded. In particular, the
+syndrum plugin in the CMT library caused this. It took me an
+inordinately long period of time to find this bug; I now can vouch
+from experience for Linus Torvald's statement about the relative
+difficulties of finding and fixing bugs. 
+
+It wasn't all bad though, because searching for this bug pushed me to
+do some major code cleanup that I've been procrastinating on. I
+finally renamed parameters controls everywhere in the codebase, and
+stopped storing controls in an array in the rtobject. Switching to a
+linked list in the rtobject makes so much sense because the rtobject's
+controls are never used for live processing. I also cleaned up the
+rtobject instance code which needed some pruning, and, finally, got to
+cleaning up the ladspa imp object.
+
+While cleaning the LADSPA imp I found out that I was not using
+LADSPA's activate & deactivate calls properly, they are for realtime
+use instead of onetime initiation. I was worrying about calling attach
+ports to many times when I should have been worrying about calling
+activate too many times. 
+
+However, the bug ended up being in the interaction of Soundtank
+controls and LADSPA controls. RTObjects that hold LADSPA plugins have
+more controls then their plugins; they have an active, mute and volume
+that are local to Soundtank. But when I called the connect ports
+function in the LADSPA API I forgot to consider this. Instead I looped
+through every control and attached it. Well for the syndrum, the first
+LADSPA port is a data output port, so when I mistakenly called the
+plugins attach port function with ladspa port number 0, it attach the
+signal output to the memory location of the first control,
+guaranteeing that vital data gets overwritten every time the plugin is
+run. As the clobbered data was allocated for other uses, the write
+itself doesn't necessarily cause the segfault. 
+
+My fault in debugging was not looking inside the CMT plugin library
+code soon enough. I was lazy and didn't want to go to the effort of
+recompiling it for debugging. As soon as I did that it gave me the
+direction I needed to find the bug. Stupid mistake because I'm usually
+the first person to spout off about the advantages of Open Source
+software, and here, where it benefited me enormously, I totally
+ignored those benefits for many hours. This debugging would have been
+impossible if I wasn't working with Open Source code and the
+particular problem had only shown up in a proprietary VST plugin.
+
+
+July 16th, 2004
+
+In a minor fixup, I changed the way pathname lookups work to allow
+rtobjects names to be numbers. It used to be that a pathname which was
+all numeric was interpreted as an address, now address lookup is
+specified by beginning the pathname with an ampersand. This means that
+names can not begin with ampersands but the advantages are much
+greater.
+
+This only became necessary when I started figuring out how to
+implement JACK support. Previously, extrernal outs were named
+'alsa-out-0', alsa-out-1' and so on. But this is silly; if I make an
+instrument and attach it to 'alsa-out-1', then save it, the saved
+state should not depend on Soundtank using ALSA output. Otherwise, all
+my instruments will stop working when I switch to using JACK
+output. So the best way to handle external outs (and ins) is to just
+number them, '/out/0', '/out/1', and so on. When Soundtank starts up,
+it should create the appropriate type of output, JACK or ALSA, and
+name them in this fashion.
+
+The Realtime Path framework is much closer to the JACK concept of
+creating ports as the program is running. For ALSA, the number of
+external ports must be constant while audio processing occurs. We deal
+with this by creating and initializing the audio engine structure
+early in the startup process. The ALSA layer is dealt with at this
+time and the number of ALSA channels is set. However, extern type
+rtobjects may be created and destroyed at any point, just like other
+rtobjects. The difference between the two methods is that only a
+limited number of extern rtobjects can exist when ALSA output is used,
+matching the number of channels in the engine. JACK has no such
+limitation because JACK client ports don't equate to hardware.
+
+
+July 27th, 2004
+
+I used Soundtank to put effects on an external signal for the first
+time just now. Using JACK external inputs & outputs I ran my
+roommate's dj'ing through a 4 second delay. Not a particularly
+outstanding effect but it worked. I also got flanging by running it
+straight through Soundtank with no effects, I guess my rig could use
+some tuning. 
+
+I'm using an Echo Mia soundcard, it's a little tricky to figure out
+because it has 8 virtual channels exposed in software in addition to 8
+physical channels, only 4 of which are analog, and there's a matrix of
+how you want to mix everything. But fortunately the mixer includes
+visual level meters so I was able to figure out what was going
+on. Much thanks to Giuliano Pochini for his excellent work in
+supporting the Echo cards, special credit is due to him for rewriting
+the generic driver in C. I hope his work gets accepted into the kernel
+soon because it will make life easier for me.
+
+
+August 8th, 2004 (11:57 am)
+
+Have just instituted a feature freeze prior to shipping a first
+release. The last thing added was a channel operation, cp, which is
+identical in implementation to a local out; but I wanted to have an
+appropriately named way of copying signal data between channels inside
+a path.
+
+Now I must revamp the documentation and do some debug checking. Then I
+have to wrestle with the intimidating autoconf system. Then a release
+can occur!
+
+
+August 9th, 2004
+
+Had to sneak two things in past the deadline for feature
+freezing. First, I forgot that there's no way to save or load scales
+to xml so I added an ExecCommand xml node. You add something like
+<ExecCommand Command="scale add atonic 64 333 1 1.333 1.444 1.555
+1.444 1.1"/> to a Soundtank file, by hand. Then when you load the file
+that command is executed so, voila, a quick hack from Jacob for you:)
+The other thing is the version option, 'soundtank -v', which is really
+crucial when you sit down at someone else's machine. Now back to
+documentation!
+
+
+August 22nd, 2004 2:55 am
+
+I just got done adding autoconf & automake support, and I did it all
+in one day! I won't say that the process was easy, but it was not
+anywhere near as terrifying as I had anticipated. In fact, after using
+the tools for a little I became comfortable with how they work and
+what they were doing. I looked at a bunch of different tutorials
+online and they were all wildly different in their approaches to
+autoconfiscating a project. This was actually kind of helpful because
+I pulled little hints from here and there when I got stuck. 
+
+The only part that wasn't smooth was figuring out how to test for the
+libxml2 headers on the system. Libxml2 insists that you uses a special
+program, xml2-config, whenever you compile your program with their
+library. This program has to be used twice: once to generate flags for
+the compiler and once for the linker. Well the problem arises when you
+ask autoconf to test for one of the library's headers, like
+<libxml/parser.h> for example. Autoconf makes a configure script that
+writes a small test file containing a line like '#include
+<libxml/parser.h>' and then tries to compile it. But the compiler
+fails without the special flags from xml2-config!  So the test fails
+and your configure script thinks that the headers aren't
+installed. Well that's a hassle so instead I just check for the
+xml2-config program as a sort of hail-mary operation.
+
+Now I'm in the home stretch towards the first public release!
+
+
+August 31st, 2004
+
+Completed the first public release: version 1.0.0, these notes won't
+be included in that release but I think it's important to write them
+anyway. I bought a bottle of $5 champagne, Andre it's called, and
+popped in the apartment. Me and my roommate Hedai finished it off
+while I ate a dry half chicken from one of the spanish food places and
+he worked on some mixes in frustration, some of the records just
+didn't seem to mix the way he wanted. I can't imagine the champagne
+helped him with the mixing but it certainly helped me with the plywood
+chicken.
+
+This release is dedicated to Rasputin, the best pet skunk that was. He
+changed my life for the better, I mean that. I miss you little guy.
+
+
+October 24th, 2004
+
+Removed calls to update_process_list from signal path
+insert/move/delete fxns. It is now required that calling functions
+call update_proclist themselves after moving rtobjects around. This
+was done to allow deferred process list updating when loading a large
+group of rtobjects from an xml file. Changes were made to xml_file.c,
+cr.c, and mv.c. This speeds up loading of xml files noticeably. 
+
+Modified everything in event map relating to the get_argv callbacks
+for tests & actions. Added a reference to the rtobject that the map
+belongs to. This was done just to allow the set action to store the
+control names instead of indexes but should have larger implications
+in the future. Using controls names makes xml files more readable.
+
+Added option to use ladspa plugins in overwrite mode. This means they
+write directly to the channel buffers instead of the working
+buffers. This is achieved by adding the letter 'o' after the plugin
+name when creating the rtobject. Need to document this properly and
+make ladspa imp objects use proper options, not hacked ones.
+
+Finally modified signal path deallocation to destroy all of their
+channels. Look out for a bug related to this as it seems to work but
+has not been thoroughly tested.
+
+
+November 3rd, 2004
+
+Bush won reelection today; I voted for Kerry. I guess this gives me
+more time to work on Soundtank before the economy picks up. It's not
+doing too bad right now, but the president has a way of making small
+businesspeople feel that they don't have much of a chance to make it
+big because all large contracts are meted out to members of this elite
+club resembling a royal court. I'm not saying the reality is different
+under Bush than other presidents, it's just that he's unable to purvey
+the illusion that we are living in the land of oppurtunity. Put
+simply, he's not a good politician. Furthermore, his administration is
+so ridiculously tight-lipped about their actions that the large
+industries are uncertain of its intentions, and so they act more
+conservatively as well. The policies of the current administration may
+be business friendly, but that only helps industries which are not
+undergoing change. When your industry is moving towards an
+intersection with another, there is no way to estimate the
+administration's ideology towards the matter and no way to judge
+incremental results of your lobbying efforts. It may seem obvious, but
+Fortune 500 CEOs also read the newspaper to find out what's going on;
+they don't all have hotlines to the whitehouse. When the
+administration prevents the newspapers from reporting on its
+activities (which it has been doing quite successfully), the Fortune
+500 CEOs have less information with which to make decisions. This
+results in status quo being stretched out for longer than usual,
+hurting the competitive abilities of the country.
+
+The reason I'm making a note in the journal is not the election
+though, I encountered a problem in option parseing. The popt library
+strips out everything that looks like an argument from the leftover
+arguments it returns. So even if -h aka --harry is not defined in the
+poptoptions table, popt will not return -h or the value following it
+along with the extra options.
+
+This popt behavior is a problem in cases where a subsection of a command line
+is passed on to another object as its command line. Example: the
+create command passes imp arguments to the LADSPA plugin imp object. I
+tried to use libpopt to parse those arguments inside the imp object
+but they weren't there because they got stripped. I've worked around
+this by finding out where the imp args start and passing part of the
+pre-popt argv to the imp object.
+
+
+November 7th, 2004
+
+Changed version strings: Soundtank version 1.0.1, Soundtank XML File
+RTObject version 2.0. XML major shift required because control names
+are saved instead of control #s.
+
+
+November 14th, 2004
+
+Ignoring bug report: "error moving signal paths destroys data port
+attachments in a horrible way", unable to verify problem.
+

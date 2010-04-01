@@ -1,0 +1,442 @@
+
+-----------------Explanation of the RTPath Framework--------------------
+
+   This document describes the Realtime Path Framework, whose purpose
+is to organize signal processing networks so that they may be used for
+realtime performance. The Realtime Path Framework consists of objects
+that process signal data in realtime and receive control events in
+realtime; we call these Realtime Objects or RTObjects for short. The
+audio program Soundtank is a reference implementation of the
+framework.
+
+   The Realtime Path Framework helps the user solve the problem of
+organizing signal flow by providing ways to create large, coherent
+signal path architectures out of many separate objects. Handling
+complicated groups of objects is unwieldy in a performance. The
+division of objects into major types in the Realtime Path Framework is
+intended to allow the user to create and store signal flow
+architectures in such a way that they can be used in performance
+either combined together or without interfering with each other. It is
+also intended to allow the user to construct interesting signal flow
+architectures which are more useful than a simple collection of their
+constituent parts.
+
+   There are 8 major types of realtime objects defined by the Realtime
+Path Framework: signal paths, external inputs and outputs, local
+inputs and outputs, sources, filters, and channel operations. A
+realtime object must be of one the eight possible major
+types. Furthermore, each realtime object has an implementation type
+which determines which piece of code the application uses to make it
+work. Implementation types are specific to the particular application
+using the framework.
+
+
+--------------------the Realtime Path RTObject------------------------------
+
+
+   What is a Realtime Path?
+
+   The first of the 8 major types is the signal path.  This type of
+rtobject is so fundamental to organizing signal flow that the Realtime
+Path Framework is named after it. A signal path object is an ordered
+list of realtime objects and a collection of data channels for
+connecting the objects' ports. Because a signal path is itself a
+realtime object, signal paths can contain other signal paths.
+
+   The order of the member objects in the signal path is the order in
+which the objects are processed. This is called the process order and
+it determines who can receive output from whom.  An object can only
+send output data to those objects that follow it in the process order
+(although explicitly specified feedback loops are allowed)
+
+ 
+   The Master Path
+
+   An application has one master signal path which contains all live
+realtime objects. Only rtobjects inside the master path are
+processed. In Soundtank, rtobjects are put inside the master path as
+soon as they are created and are only removed when they are destroyed.
+
+   Subsidiary Realtime Paths:
+
+   A typical application will have four top-level realtime paths
+inside the master path, these help the user keep objects in a proper
+order.
+ 
+   -the first path, "in", is for external input objects; inputs of
+    signal from the outside of the program to the inside. Typical
+    audio examples are microphone input hardware ports or JACK audio
+    input ports.
+
+   -the second path, "src", is for instrument type objects; this is a
+    loose category for objects that are more likely to be sources of
+    signal flow than to be filters of signal flow. Typical audio
+    examples are softsynths and audio files/samples.
+
+   -the third path, "efx", is for effect type objects; this is another
+    loose category but for objects that are more likely to be filters
+    of signal flow then to be sources. Typical audio examples are
+    echoes, reverbs, delays and so on.
+
+   -the fourth path, "out", is for external output objects; outputs of
+    signal from inside of the program to the outside. Typical audio
+    examples are line out hardware ports or JACK audio output ports.
+
+
+
+   Why have more than one realtime path? 
+
+   The external inputs and outputs are kept separate because they are
+shared among all other realtime objects and they will typically exist
+for the duration of the program while the other objects will come and
+go. Remember that an object can only send its output to another object
+that follows it in the process order, so the external inputs must be
+processed before all other objects and the external outputs after.
+
+   The efx path is intended for effect objects that will be shared
+by multiple instrument type objects. Or, to turn that statement on its
+head, the effects in the effect path can always be applied to any
+object in the instrument path because they come after all those
+objects in the process order. 
+
+
+
+--------------------------------------------------------------------
+
+   Realtime Objects vs Realtime Object Instances
+
+
+   When an realtime signal generation application is live, there is a
+realtime thread of execution that is running a process function very
+frequently. The process function does the actual work of creating the
+data signal that the application will output; this is separate from
+the user interface aspects of the program. For low-latency operation,
+the realtime thread of execution must operate as fast as possible with
+as few delays as possible. This constraint dictates another aspect of
+the Realtime Path framework: realtime object instances.
+
+   Every realtime object has one or more realtime instances which are
+slimmed down versions of the object. The realtime instance contains
+only the minimum information that the realtime thread of execution
+needs in order to make the object "do what it does" with regards to
+producing or altering a signal stream. While the realtime object
+itself contains a lot of information relavent to structuring the flow
+of the signal stream, the realtime instance just contains information
+pertinent to manipulating a single part of a signal.
+
+
+   What is the relationship between rtobjects and instances? 
+
+   Every realtime object has a list of its instances. Some objects are
+limited to having only one instance. A typical multi-instance audio
+object is a polyphonic synthesizer which has as many voices of
+polyphony as it has instances.
+
+
+
+--------------------------------------------------------------------
+
+The Common Properties of Realtime Objects:
+
+   All realtime objects share some things in common.
+
+-they all can belong to a realtime signal path (this is called their
+ parent path),
+
+-they all have a certain position in the process order of their path
+ (this is called their process index),
+
+-they all have a list of controls that allow them to be manipulated by
+ realtime events,
+
+-they all have a data port list that holds all their signal flow
+ inputs and outputs,
+
+-they all have a list of their instances which are their
+ representation to the facilities that do the actual realtime
+ processing,
+
+-they all can have one or more input maps which govern how incoming
+ events are translated into actions that modify their controls,
+
+-they all have a major type, which characterizes their role in the
+ signal flow architecture,
+
+-they all have an implementation type which tells what chunk of
+ computer code the application is using to provide the functionality
+ of the object.
+
+   The last two attributes in this list are the two most fundamental
+descriptions of any realtime object. The major type tells how an
+object relates to the abstract realtime path framework, while the
+implementation type tells how an object relates to the particular
+application it is in.
+
+
+----------------------------------------------------------------------
+
+The 8 Major Types of Realtime Objects:
+
+     The Realtime Path Framework defines 8 major types of realtime objects.
+
+-signal_path: an ordered list of realtime objects and a collection of
+ data channels for connecting the objects' ports. This is a
+ self-contained section of signal stream which holds other realtime
+ objects connected in a coherent manner. signal_path's can only have
+ multiple instances if all the objects they contain are capable of
+ having multiple instances. signal_path's can contain other
+ signal_path's.  The master signal_path contains all active rtobjects
+ and can not be deleted while the application is running.
+
+-extern_in: an input of signal stream from outside of the application
+ (the external) to inside the application. Should be put inside a
+ signal path which is processed before all others. extern_in's can
+ not have multiple instances.
+
+-extern_out: an output of signal stream to the outside of the
+ application (the external again) Should be put inside a signal path
+ which is processed after all others. extern_out's can not have
+ multiple instances.
+
+-local_in: an object that receives signal flow from a different signal
+ path inside the application. A local_in can receive input from many
+ senders or one or none. it should be implemented as a mix-in
+ buffer. local_in's can have multiple instances, however their
+ instances are not unique targets but must all be attached to the same
+ sources.
+
+-local_out: an object that sends part of the signal stream out of its
+ signal_path to a different signal_path or to an extern_out
+ object. local_out's can have multiple instances, however their
+ instances must all output to the same targets.
+
+-source: an object that generates signal output in response to control
+ events. A source has output data port outputs but no input data
+ ports. Typical audio examples are synthesizers and audio files (aka
+ samples).
+
+-filter: an object that modifies signal flow. A filter is identical to
+ a source except that it has both input and output data ports. Typical
+ audio examples are echoes, reverbs, delays and so on.
+
+-channel_operation: an object that performs a utilitarian conversion
+ on the signal stream. typical audio examples are splitting one
+ channel into many, mixing multiple channels into one, maybe even
+ converting from one type of channel to another. channel_operation's
+ can have multiple instances as long as they all act the same. (you
+ may notice that channel_operations are structurally identical to
+ filters, it is up to the better judgement of the application
+ developer to differentiate the two)
+
+
+---------------------------------------------------------------------
+
+The Channel Scheme for RTPaths:
+
+   Each signal path has buffers, which are used to store chunks of
+data signal. Signal paths assign labels to most of their buffers. A
+labelled buffer is used as a channel to connect multiple
+rtobjects. RTObjects are connected by connecting their data ports to
+common channels. Both input and output data ports can be attached to
+channels. An rtobject's data ports can only be attached to the
+channels of its parent signal path, or one of its parent's parents.
+
+   As an audio example, source object synth1 connects its left output
+data port to a channel labeled 1 and its right output data port to
+channel 2. Following it in the process order are two reverbs which can
+only handle mono data. So the first reverb attaches both its input and
+output data ports to channel 1 while the second reverb attaches its
+ports to channel 2. The synth1 object now has its signal run through a
+stereo reverb of sorts.
+
+   The point of the channel scheme is to allow each signal_path to be
+a self contained object, like a piece of hardware in the studio. The
+various components of the signal_path include inputs (local_in's)
+which receive data from other signal_paths or external inputs, other
+objects that process the signal stream inside the signal_path to
+achieve some desired result, and outputs (local_outs) which send data
+out from the signal_path to other signal_paths or to external outputs
+from the application to the outside world.
+
+
+---------------------------------------------------------------------
+Implementing Channels
+
+   Because the Realtime Path framework is abstract, apps can choose to
+implement as they please. However, you should know what implementation
+was decided upon that resulted in the current channel
+compromise. First, buffers are made to keep track of all rtobjects
+that use them. Next, signal paths always ask their parent path to give
+them a buffer when they need it. Only the master path actually asks
+the application for new buffers. If a child path asks its parent path
+for a buffer, the parent path checks if it has any buffers that the
+child isn't already using, then it asks its parent path if necessary.
+
+
+---------------------------------------------------------------------
+Channel Scoping
+
+
+
+   For the most part, a signal path's buffers are only significant
+inside the path. However, it is sometimes necessary for signals to
+flow between the inside and outside of a path. Let's examine the ways
+of achieving this.
+
+
+Global Scope Channels:
+
+   Global scope channels are just labeled buffers in the master
+path. A global scope channel is used when there is an app-wide target
+that many output's may want to send to. External outs are a good
+example of this. Global scope channels are usually not referred to by
+labels, instead they are accessed by attaching to the target object
+that receives their contents. Modifying their contents will likely
+result in confusion when you have to track down the rtobject that's
+causing the modification, you should mostly use them to send output data.
+
+Local Inputs & Outputs
+
+   When a local input or output is created, it consists of some ports
+for use inside of its signal path, and some ports for use one scope
+level up. The higher scope ports are adopted by the parent path, which
+exposes them as its own. For example, a local in has an input port
+which its parent path lists as its own, and an output port in local
+scope. The local input's input port is included both in its parent's
+list of data ports and in its own.
+
+   Through this arrangement, the signal from parent scope is copied
+into the local scope channel. This is quite useful because it allows
+you to create a collection of objects that you can treat as a single
+object. Let's say you always use a particular combination of a sine
+wave source and a distortion filter as a unit; you can put those two
+into their own signal path, add a local output, and voila, the combo
+can be treated as a single object with one output port.
+
+Mapping Channels 
+
+(NOTE: Channel Mapping is not implemented in Soundtank 1.0.0)
+
+   Local inputs and outputs are copy operations. This is a drawback
+because copying takes time, do too much of it and you'll run out of
+processing time for synthesis. If you want to have the benefits of
+grouping some objects into a unit, but they don't need a private
+context in which to work, you can simply map the channels of their
+signal path onto some of their parent's channels. As an example,
+assume you always use three filters together as a unit. You can take
+those filters and group them into a signal path. Adding local inputs
+and outputs would result in unnecessary copying because you always use
+that filter setup destructively. Instead, you can map some of the
+path's channels onto some of the parent's. This effectively removes
+the child path from the equation for everything except
+organization. Note that this means you are dealing with the _same_
+channel inside the child path. So any changes you make there effect
+the parent's channel in a destructive manner.
+
+
+---------------------------------------------------------------------
+Controlling RTObjects in Realtime
+
+   In the RTPath Framework, controls are limited to being continuous
+linear ranges of real numbers or integers. For example: 0 to 1
+inclusive, or 0 to infinity. Each control can have a minimum, a
+default value, and a maximum. 
+
+   The events used to control rtobjects are considered as finite lists
+of real numbers. Examples: (2,5,0), (1,8.5). Most often, MIDI events
+are used and they are limited to holding integer values. The different
+positions where an event can carry values are called parameters. This
+is from MIDI; the MIDI event parameter "Event Type" can be one of
+Note-On, Note-Off, Pitchbend, etcetera with each of those types having
+an assigned integer value. The MIDI event parameter "Note" is limited
+to holding integers from 0 to 127, each of which is related to a note
+on a piano keyboard.
+
+   We want a flexible way of translating events arriving at the
+application into actions performed on RTObjects. The goal is to
+control RTObjects using MIDI controllers and sequencers in the most
+natural way possible, while still allowing users to create inventive,
+custom-tailored ways of responding to control events. The event
+handling system is a very important part of using RTObjects for live
+performance. You should be able to control as much as possible in the
+application using just your MIDI hardware.
+
+   Event Maps are the way these goals are handled in the RTPath
+Framework. Events are run through Event Maps, inside of which they are
+put through a series of tests, and should they satisfy a test, they
+are then applied to all the actions attached to that test.
+
+   Each RTObject has a list of Event Maps that belong to it. RTObjects
+are not required to have an Event Map, if they don't all events that
+arrive at them will be dropped. When an event arrives at an RTObject,
+it is run through the first Event Map in the object's list of maps.
+
+   Each Event Map has a single list of tests. When an event arrives at
+an Event Map, it is put through the first test in that map's test
+list. Each test results in a positive or negative result. When a test
+result is negative, the event is passed to the next test and dropped
+if there are no more tests. When a test result is positive, the event
+is passed to all of the test's actions in turn and then dropped.
+
+   There are many different types of actions, but some basic ones are
+important enough to mention. First, the jump action jumps the event to
+another test in the current event map, another event map in the
+current rtobject, or another rtobject altogether. Event handling does
+not continue to the next action after a jump, it continues wherever
+the jump lands. 
+
+   The other basic action is set. Set uses the incoming event to set
+one of the rtobject's controls to a certain value. The set command has
+to know which control to effect. It also must know which parameter in
+the event to use to set the control, or whether it should just set the
+control to a fixed value. It also must know whether it should shift
+and scale the value of the event parameter when it sets the control.
+
+   Another useful action, is copy. Copy has not been implemented in
+Soundtank 1.0.0. Copy is like jump accept that a copy of the event is
+sent to the target instead of the actual event. After the event copy
+is dropped, the original's processing continues at the next action
+after the copy action. Copy can also be directed to send copies to all
+of a signal path's member objects, or all member objects of a certain
+major type.
+ 
+
+-------------------------------------------------------------------
+Representing Control Hardware Inside the Application: Input Objects
+
+   Input Objects are a major type not yet included in the 8 major
+types described this document. They are not implemented in Soundtank
+1.0.0 either.
+
+   Input Objects are used to represent a piece of control hardware
+inside the application. The controls in an Input Object are named to
+match the actual controls on the hardware. For example a keyboard
+might have Keyboard, Knob1, Knob2, PitchBend, ModWheel, Slider1, and
+Slider2. These controls can then be referenced in Event Maps in other
+RTObjects. In actions that take event parameters, you can specify an
+Input Object control name instead. This allows much more generic event
+maps and much more flexible routing of events.
+
+   When attaching an Input Object to another object, you can specify
+to attach only certain controls, or the whole thing. You can also lock
+certain control's attachments so that they won't be detached when you
+attach the Input Object to another target object.
+
+   RTObjects that will be controlled by an Input Object should have a
+map with the same name as the Input Object. This requires Event Maps
+to have names which they don't in Soundtank 1.0.0. Furthermore, Input
+Objects greatly improve automatic map generation because all the
+controls in an rtobject can be automatically mapped up to the Input
+Object's controls. These automatically generated maps are not as
+useful as custom made ones but they are quite handy for figuring out
+what an RTObject that you are not familiar with is capable of.
+
+   Another benefit of Input Objects is that you can quickly adjust to
+new hardware in situations where it is required. If your keyboard is
+not available and someone gives you another one to use for a session,
+you can redefine how the missing keyboard's Input Object works and
+then all of your custome Event Maps are available without any
+modification.
+
+by jacob robbins
+Copyright (C) 2002-2004

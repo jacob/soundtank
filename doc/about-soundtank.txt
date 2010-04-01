@@ -1,0 +1,397 @@
+
+*********************SOUNDTANK USER OVERVIEW**********************************
+
+
+   Soundtank hosts LADSPA plugins in "realtime objects" which embody
+the structure of the audio signal flow. RTObjects can be controlled in
+a completely customizeable fashion using MIDI events sent through the
+ALSA sequencer interface. Soundtank outputs audio through ALSA or
+JACK. Currently, full duplex operation is only possible in JACK.
+
+   Because Soundtank has no built-in audio synthesis routines, it is
+highly recommended that you download and install LADSPA plugin
+libraries like CMT, TAP, SWH before using Soundtank.
+
+
+**** RTOBJECTS
+
+   Soundtank contains realtime objects, rtobjects for short. You can
+create, destroy, move and manipulate these rtobjects using
+commands. There are eight major types of rtobjects:
+
+      -signal path, ordered list of rtobjects & channels connecting them
+      -external input, audio signal coming in from outside Soundtank
+      -external output audio signal leaving Soundtank
+      -local input, audio signal entering a signal path
+      -local output, audio signal leaving a signal path
+      -source, generates audio signal
+      -filter, modifies audio signal
+      -channel operation, moves audio signal between signal path channels
+
+
+**** SIGNAL PATHS
+
+   Signal Paths are ordered collections of other rtobjects. The order
+of member rtobjects in a signal path is the order in which they are
+processed, consequently this can be considered the course of signal
+flow. When processing inside a signal path reaches another signal path
+object, all the members of that signal path are processed. So, by
+listing all of a path's member objects recursively, the entire
+contents of a signal path can be expanded into a single ordered list.
+
+
+**** THE MASTER PATH
+
+   In all programs that use signal paths, there must be one master
+signal path that contains all rtobjects that are currently being
+processed. The master path is named "main", but we often refer to it
+using the forward slash, "/", at the front of a pathname. For example,
+"/out/alsa-out-1" refers to the rtobject "alsa-out-1" which is inside
+the the signal path "out" which is inside the master path, here
+notated by the first forward slash. As you can see, signal paths hold
+rtobjects like directories hold files.
+
+
+**** THE 4 TOP-LEVEL PATHS
+
+   The convention is to have four top-level signal paths in the master
+path. These aid in processing different types of objects in the proper
+order:
+
+First, the path /in : external inputs that bring audio into the program
+       from outside sources, such as soundcard inputs and other audio
+       programs.
+
+Second, the path /src : audio data sources (sound synthesizers).
+
+Third, the path /efx : effects, which manipulate audio streams
+       produced by other sources. There is overlap between /efx and
+       /src.
+
+Fourth, the path /out : external outputs which deliver audio out of
+       Soundtank.
+
+
+
+**** NAVIGATING THE SIGNAL PATH HEIRARCHY
+
+   The commands "cd", "ls", and "pwd" are used in Soundtank the same
+way you are familiar to using them in the Unix shell.
+
+   The pathname of an rtobject can either be specified absolutely or
+relatively. An absolute pathname starts with a forward slash, for
+example /out/out0. The first forward slash refers to the master path,
+out is the name of a path in the master path, and out0 is an external
+output rtobject in that. A relative pathname does not begin with a
+forward slash, it refers to something in the current directory, or
+.. which refers to the parent of the current directory.
+
+   An rtobject can also be specified by its address, although this is
+only useful for debugging. Where a pathname is required, starting with
+the ampersand, '&', indicates that what follows is an object's address
+instead of a path. To view objects by address, do 'ls -a'. You should
+not give an rtobject a name that begins with an ampersand.
+
+
+
+**** CREATING & DESTROYING RTOBJECTS
+
+  The command "cr" creates new rtobjects. It requires a major type,
+name, and implementation specific arguments.  Some types of RTObjects
+have multiple implementations in Soundtank's source code, you choose
+one by giving an implementation type and, possibly, implementation
+arguments. The implementation type usually defaults to what you want
+based on the major type, so you can generally ignore it. Currently,
+you can choose implementation type 'ladspa' or 'test' for source
+rtobjects, the latter being a built-in square wave generator. Also,
+there is one channel operation ('op' for short), 'cp', which copies
+one local channel to another inside a signal path.
+
+  For example, "cr src newsource sine_fcac" creates an rtobject named
+"newsource", of the major type source, using the LADSPA plugin named
+sine_fcac. This command is equivalent to explicitly specifying the
+LADSPA plugin implementation type as follows: "cr src newsource ladspa
+sine_fcac".
+
+  When you are done with this rtobject, remove it from Soundtank with
+the "rm" command as follows, "rm mysource". Alternately, you can
+specify the full pathname of the rtobject just like in a Unix shell:
+"rm /src/mysource". Command line completion with the tab key works for
+pathnames.
+
+
+**** MANIPULATING RTOBJECTS' CONTROLS WITH SET
+
+   Using "ls" with the option "-c" shows the controls of the rtobjects
+listed. Soundtank always makes the first control the activation
+control, the second control the muting control, and the third control
+the volume control.
+
+   So looking at a typical LADSPA plugin rtobject might read:
+
+sndtnk src> ls -c mysrc 
+mysrc    
+5 control(s):
+ #  0, "Active"          1.000    
+ #  1, "Mute"            0.000    
+ #  2, "Volume"          1.000    
+ #  3, "Frequency"       440.000  
+ #  4, "Amplitude"       1.000    
+
+   Only the last two controls, "Frequency" and "Amplitude", are
+actually part of the LADSPA plugin. The others are created by
+Soundtank for every rtobject.
+
+   When the "Active" control is set to a value greater than 0, the
+rtobject is processed. Otherwise it is bypassed. When the "Mute"
+control is set a a value greater than 0, the audio output of the
+rtobject is muted. The audio output of the rtobject is scaled by the
+value of the "Volume" control.
+
+   The "set" command is used to set control values. It takes an
+rtobject name, a control name or index, and a value as arguments. In
+our example, we could increase the volume of mysrc as follows:
+
+sndtnk src> set mysrc volume 800
+sndtnk src> ls -c mysrc 
+mysrc    
+5 control(s):
+ #  0, "Active"          1.000    
+ #  1, "Mute"            0.000    
+ #  2, "Volume"          800.000  
+ #  3, "Frequency"       440.000  
+ #  4, "Amplitude"       1.000    
+
+   In this case, the volume control could also have been referred to
+as 2 (its index) or just vol (or any other initial substring).
+
+
+**** ATTACHING RTOBJECT'S DATA PORTS WITH AT
+
+   Using "ls" with the option "-p" shows the data ports of the
+rtobjects listed. Data ports can be attached to local channels that
+only exist inside a particular signal path, or global channels that
+exist inside the master path. The former is good for making a chain of
+rtobjects inside a path, the latter is good for attaching output of
+the last object in the chain (a local out) to the input of an external
+output (such as /out/alsa-out-1).
+
+  When you add an rtobject to a signal path, it's data ports will not
+be connected to any channels by default. This is not what you want to
+do. You use the 'att' function to attach a port to a channel. To
+continue with our example object from above:
+
+sndtnk src> ls -p mysrc
+mysrc    
+1 data port(s):
+ output data port 0, "Output" isn't connected
+
+   To attach to an external output:
+
+sndtnk src> att mysrc /out/alsa-out-0
+sndtnk src> ls -p mysrc 
+mysrc    
+1 data port(s):
+ output data port 0, "Output" is connected to /out/alsa-out-0, port 0 via global channel 1
+
+   To attach one of mysrc's data ports to a channel that belongs to
+the signal path that mysrc is inside ("/src" in this case), we must
+specify which data port we want to attach and use the asterisk to
+denote the parent path:
+
+sndtnk src> att mysrc 0 * 3
+sndtnk src> ls -p mysrc 
+mysrc    
+1 data port(s):
+ output data port 0, "Output" is connected to parent local channel 3
+
+
+**** RTOBJECTS WITH MULTIPLE INSTANCES
+
+   Each RTObject has one or more instances. The realtime processing
+function only deals with rtobject instances and not the actual
+rtobjects. Each of an RTObject's instances has its own control values,
+but all instances share the same data port connections. 
+
+   You can look at instances' control values with "ls -i" or "ls -c",
+and you can set the number of instances with "set -i" followed by the
+rtobject name and the desired number of instances.
+
+
+**** EVENT MAPS
+NOTE: MIDI event maps are also described in the tutorial.
+
+   Each RTObject has a port in the ALSA sequencer that you can use to
+send it MIDI events. The Event Maps belonging to that RTObject are
+used to turn incoming MIDI events into actions. An Event Map can
+reroute the MIDI event to another RTObject, do something to the
+RTObject, or reroute the MIDI event to another Event Map in the same
+RTObject.
+
+   When a MIDI Event arrives at an RTObject it is run through the
+first Event Map in the RTObject's list of maps. Each Event Map
+consists of a list of tests which are performed on the incoming MIDI
+event. If a test fails, the event is passed to the next test. If there
+are no more tests then the event is dropped. If the event passes a
+test, then all the actions attached to that test are executed.
+
+   The commands 'map', 'test', and 'action' are used to examine and
+modify Event Maps. 
+
+   NOTE: You can have Soundtank attempt to automagically create an
+event map for any rtobject with the command 'map rtobjectname auto'. 
+This might not give you the map you want, but it at least gives
+you an example map to examine and modify.
+
+
+**** SHIFTING & SCALING & SETTING
+
+   When you want a MIDI note to set the value of an rtobject control,
+you use the 'set' action. The first argument is the name or index of
+the control that you want to set. The second argument tells the action
+which parameter in the MIDI event should be used as the value to set
+the control. The choices are: channel, note, velocity, offvelocity,
+duration, ccparam, or ccvalue.
+
+   These MIDI parameters can only hold values from 0-127. You often
+want to shift and scale that range to a different one, say 0-1 or
+0-1000. The 'set' action allows for this with the optional argument
+'shift'. Add the 'shift' argument to the action followed by the
+minimum and maximum of the range you want the MIDI value shifted
+to. The action shifts and scales from 0-127 to your specified range.
+
+   The 'set' action can also take the 'match' argument used for polyphony.
+
+
+**** SCALES
+
+   Scales translate a MIDI Note value into a frequency. MIDI Notes are
+integers from 0 to 127, for frequency we use a floating point number
+to represent HZ. A scale consists of a name, a MIDI Note which is the
+base of the scale (it need not be 0 and notes below the base-note are
+allowed), a base-frequency (also called the base-pitch), and then the
+notes themselves which are floating point (decimal) numbers starting
+at 1.0 (usually), and ending below 2.0 (usually). The idea is that you
+give one octave's worth of notes and these are used to generate all
+the octaves. The notes are multipliers for the base pitch which is
+then exponentiated by an octave factor.
+
+   Soundtank always make a default scale named 'def', which is
+reasonably close to the notes on a piano. This scale is created at
+startup and can be used in any event map.
+
+   To use a scale, add a 'pitch' action to an event map. The first
+argument to this action must give the name or index of the control you
+want to set, the second argument is the scale's name. You can
+optionally specify that the rtobject is to be used polyphonically by
+adding the argument 'match'.
+
+
+**** MAPPING EVENTS TO PARTICULAR INSTANCES USING FLAGS
+
+   The 'flag' action allows rtobjects with multiple instances to be
+used polyphonically. For polyphony, each different note must be
+assigned to a different instance. This is done by finding a free
+instance and setting its flag when a Note-On event arrives, and
+unsetting the flag when the following Note-Off event arrives.
+
+   The flag action takes two arguments, the first must be 'note', and
+the second can be 'on' or 'off' depending on whether the flag is to be
+turned on or off. Flags must be removed from instances before they can
+be used by other notes, however, in-use instances will be commandeered
+if too many Note-On events arrive.
+
+   When making event maps, you must set the note flag first before
+using any actions with the 'match' argument. You must unset it last,
+after all actions such as deactivating or muting the instance have
+occured. To summarize, for polyphony you make a test for MIDI Note-On
+events, then add the 'flag' action and follow it with 'set' & 'pitch'
+actions that include the 'match' argument. You also make a test for
+MIDI Note-Off events, and add 'set' arguments to quiet the instance
+followed by a 'flag note off' action.
+
+
+**** MAKING SIGNAL PATHS ACT LIKE SINGLE RTOBJECTS
+
+   Signal Paths can be used to make groups of rtobjects act as a
+single rtobject. There are two parts to this: local in's & out's, and
+event remapping. 
+
+   A signal path will display the output data ports of its local out's
+and the input ports of its local in's as if they were its own. In
+other words, when you add a local input rtobject to a signal path, it
+gives that signal path an input port of its own. The other side of the
+local input should be attached to one of the signal path's channels.
+
+   When you want a Signal Path to act as a single rtobject, you should
+give it event maps that remap incoming MIDI events to the appropriate
+rtobjects inside the Signal Path. For example, if you have a volume CC
+event come in, it should go to all the local out's in the Signal
+Path. More event map actions are going to be added to improve this
+kind of event handling.
+
+
+****  SAVING & LOADING RTOBJECTS
+
+   Soundtank saves rtobjects in XML format. The file made is a list of
+saved rtobjects with complete state information for each (i.e. how
+many instances, what the instances' control values are, what the data
+ports are attached to...). Each rtobject is saved with its absolute
+pathname, so we would see '/src/myinst/sine1' instead ofq just
+'sine1'. The absolute pathname is used to put rtobjects into the
+proper place in the path heirarchy. 
+
+   When you save a signal path, all of its member objects are saved
+too. Currently, you can't append an rtobject to an existing file, the
+file will be overwritten instead. You can't load only one rtobject
+from a file. And you can't load an rtobject to a different name or
+signal path then what it was saved as. However, the XML file format is
+simple and human readable, so you can always edit the saved files by
+hand.
+
+   There are some special cases when it comes to files. The top-level
+paths 'in', 'src', 'efx' and 'out' are always ignored during saving
+and loading. Naturally the master path is ignored too. When loading
+external in's or out's, only rtobjects whose implementation type
+matches the current engine method are loaded. In other words, no JACK
+externs are loaded if you are using ALSA and vice versa. 
+
+
+
+**** THE SOUNDTANK ENVIRONMENT CONFIGURATION FILE
+
+   When Soundtank starts up, it loads the environment file,
+.soundtank_env, from your home directory. If this file doesn't exist a
+default one is created. The point of this file is to initialize the
+rtobjects in Soundtank to a normal state so that you can begin
+working. You shouldn't have to create external outputs every time you
+run Soundtank, so you just put them in the environment file and
+they're loaded at startup. Soundtank creates a default set of external
+outputs for you, but you may want to alter these. Furthermore, there
+may be some rtobjects that you always use, so it's easier to just have
+them loaded automatically.
+
+   Different external in's & out's are loaded depending on whether you
+use ALSA or JACK. If you want to have both of them in the environment
+file, you will have to copy & paste them in by hand. This can be
+useful however. 
+
+   There is a hack in Version 1.0 of the Soundtank XML format; you can
+create an ExecCommand node in a file in which you write a command to be
+executed when the file is loaded. The format is as follows:
+
+<ExecCommand Command="scale add atonic 64 333 1 1.333 1.444 1.555 1.444 1.1"/>
+
+These nodes must be inside the Soundtank collection but they can't be
+inside an RTObject. This was done to load scales but any command can
+be used.
+
+
+
+
+************** 
+Copyright 2003-2004 by Jacob Robbins released under the
+same GNU Public license as Soundtank
+
+document first version: 6/19/2003
+most recent revision: 8/19/2004

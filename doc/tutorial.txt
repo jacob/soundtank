@@ -1,0 +1,342 @@
+
+****************Soundtank Tutorial*************************
+
+
+   [To begin, start Soundtank. You should see output similiar to the
+   following:]
+
+no engine method selected, using alsa
+no alsa device selected, using default 'plughw:0,0'
+no sample rate specified, using default 44,100 hz
+no num channels specified, using default 2
+no num periods specified, using default 2
+no period size specified, using default 1024
+checking for Soundtank environment file, ~/.soundtank_env
+loading environment file, ~/.soundtank_env
+starting engine...
+
+  welcome to Soundtank, audio engine is live!
+
+sndtnk src> 
+
+
+   [you are now at the soundtank command prompt, 
+     we'll enter some commands...]
+
+sndtnk src> pwd
+/src/
+
+   [pwd: print working directory to reveal current directory we're in. 
+    The result: '/src' indicates we are in the source directory
+    which is intended for objects used primarily as sound generators;
+    the /efx directory is primarily for effects.]
+
+sndtnk src> cd /out
+
+   [cd: change directory. Moves to a different signal path, in this
+    case the 'out' path. The top-level path 'out' is for external
+    outputs which move signal data from inside Soundtank to the
+    external world. Similaraly, the top-level path 'in' is for
+    external inputs which bring signal data into Soundtank.]
+
+- 'cd /' switch to the master path, the root of the path heirarchy
+
+- 'cd ..' move up a level in the path heirarchy
+
+- 'cd dirname' switch to signal path named dirname
+
+sndtnk out> ls
+out0    out1    
+
+   [ls: list signal path contents. In this case we see that the
+   path 'out' contains two rtobjects: out0 & out1.]
+
+- 'ls -l' list contents in long format (more info)
+
+- 'ls --help' explains ls options (this works for all the functions
+              mentioned in this document)
+
+
+
+
+   [Now make a new object to utilize]
+
+sndtnk src> cr src mysrc sine_fcac
+
+   [This will only work if you have the sine_fcac LADSPA plugin
+   installed on your system. If you haven't downloaded and installed
+   LADSPA plugin libraries like CMT, TAP, SWH, it is highly
+   recommended that you do so because soundtank has no built-in
+   synthesis routines. If you haven't installed LADSPA plugins you
+   can do the following to make a test source...]
+
+sndtnk src> cr src mysrc test
+
+   [Both calls create a realtime object of major type source, named
+    mysrc. The first call creates mysrc as a LADSPA plugin of type
+    sine_fcac, while the second call creates mysrc as a test source
+    using a built-in square wave generator.]
+
+
+   [We must attach the new object to output to hear it]
+
+sndtnk src> att mysrc /out/
+
+   [ this attaches the outgoing data ports of mysrc to the input ports
+   in the /out signal path. All the rtobjects that send sound out of
+   Soundtank are kept in the /out path. ]
+
+
+   [ You probably still won't hear anything until you boost
+   Soundtank's output volume ]
+
+sntnk src> vol /out ++
+
+   [ this increases control 2 (volume) in all the outputs in the /out
+   signal path. ]
+
+
+   [ look at all available controls on mysrc ]
+
+sndtnk src> ls -c mysrc
+mysrc    
+5 control(s):
+ #  0, "Active"          1.000    
+ #  1, "Mute"            0.000    
+ #  2, "Volume"          1.000    
+ #  3, "Frequency (Hz)"  0.000    
+ #  4, "Amplitude"       0.000    
+
+
+   [Aha! Frequency & Amplitude, aka controls 3 & 4, need to be set to
+   reasonable values. Controls can be set using the 'set' command]
+
+sndtnk src> set mysrc freqency 440
+sndtnk src> set mysrc amplitude 1
+
+   [we want to know more about the set command, so we use it with
+   either the '-h' or '--help' option]
+
+sndtnk src> set --help
+explanation: set is used to set assorted rtobject properties
+note: set is _not_ for realtime/live control, use event maps
+useage: set rt-error [loud|quiet|off] : controls display of realtime errors
+useage: set debug [on|off] : controls Soundtank's readout verbosity
+useage: set rtobject -i|-ins|--instance instance-count : set # of instances
+useage: set rtobject [instance-#] control-# value : change a control
+
+   [Useage #3 tells us that we can set the number of instances an
+   rotbject has using the set command]
+
+sndtnk src> set mysrc -i 3
+
+   [to see if that worked we use ls again]
+
+sndtnk src> ls -c
+mysrc    
+5 control(s):
+ #  0, "Active"          1.000    1.000    1.000    
+ #  1, "Mute"            0.000    0.000    0.000    
+ #  2, "Volume"          1.000    1.000    1.000    
+ #  3, "Frequency (Hz)"  440.000  440.000  440.000  
+ #  4, "Amplitude"       0.000    0.000    0.000    
+
+   [the 3 sets of values after each control correspond to the three
+   instances of mysrc that now exist. We can also check this with 'ls -i']
+
+
+****************Event Maps*************************
+   [now we want to make an event map that will allow us to play mysrc
+   using a MIDI controller. Realtime objects can have multiple event
+   maps, we'll just create one event map for mysrc]
+
+   [NOTE: when an rtobject is created, Soundtank attempts to
+   automatically create an event map for it. (This behavior can be
+   prevented by using the -n option when creating the rtobject).
+   Automatic map creation will handle turning rtobjects with pitch
+   controls into instruments controllable by MIDI keyboard but it
+   currently does not handle other types of controls.]
+
+   [first see if mysrc already has an event map and, if so, empty
+   it (for purposes of example)]
+
+sndtnk src> map mysrc -l
+mysrc map #0:
+type ( noteon )  3 actions:  flag ( note, on );  pitch ( 3, def, match );  set ( Active, const, 1.000, match )
+type ( noteoff )  2 actions:  set ( Active, const, 0.000, match );  flag ( note, off )
+
+   [yup, it has a map, let's flush it]
+
+sndtnk src> map mysrc flush
+
+   [create a new event map using the map command with 'append']
+
+sndtnk src> map mysrc append
+
+   [we check the status of mysrc's event maps using the same map
+   command but with the list option, '-l']
+
+sndtnk src> map mysrc -l
+mysrc map #0:
+
+   [mysrc now has one event map that is empty, let's add a test to
+   handle MIDI note on events:]
+
+sndtnk src> test mysrc 0 append type noteon
+
+   [note that we use the 'map' command to work with whole maps, the
+    'test' command to work with tests (specifying map #) and the
+    'action' command to work with actions (specifying map # and test #)]
+
+   Actions that we attach to the noteon test will be executed when a
+   noteon event is received by mysrc. 
+
+   What actions should we attach to the noteon test? To see all
+   available actions, do 'action show-actions'. I'm not going to do
+   that in the tutorial as it produces a lot of output.
+
+   We will start with simply setting the frequency of mysrc based on the
+   noteon event's pitch, then we'll do a more complicated setup that
+   turns mysrc on & off like a real instrument]
+
+
+sndtnk src> action mysrc 0 0 append pitch frequency def
+
+   [This command says: append a "pitch" action to mysrc, map 0, test 0 
+    and initialize the action with the arguments "frequency def".
+
+   For the pitch action, the first argument, frequency, refers to the
+   control in mysrc that we want to set to a pitch value, the second
+   argument, def, refers to the name of the scale used to translate
+   the MIDI note # into a frequency. 'def' is the default scale
+   created automatically by soundtank.]
+
+
+
+   [let's check that it worked...]
+
+sndtnk src> map mysrc -l
+mysrc map #0:
+   type ( noteon )  1 actions:  pitch ( Frequency (Hz), def )
+
+    [Note that 3 refers to the control index, of the frequency
+    control. If your map readout looks like this then you're ready to
+    attach a MIDI controller to the mysrc client in the ALSA
+    sequencer. This is done outside of Soundtank using aconnect or
+    some similar program.
+
+    Note that you have to manually set mysrc so that it is making
+    sound before the MIDI control will have any effect; under this
+    setup MIDI control _only_ effects the pitch of mysrc, not the
+    volume, mute or anything else.]
+
+
+
+    [once you get this to work, you are ready to move on to making
+    mysrc act like a regular polyphonic softsynth...]
+
+
+
+
+    [first, flush out the existing action]
+
+sndtnk src> action mysrc 0 0 flush
+sndtnk src> map mysrc -l
+mysrc map #0:
+   type ( noteon )  0 actions: 
+
+
+    [For polyphony, we want to match each different incoming MIDI note
+     to a different instance of mysrc. This is done by flagging a free
+     instance when a noteon event comes in, and unflagging it when the
+     corresponding noteoff event arrives.]
+
+sndtnk src> action mysrc 0 0 append flag note on
+sndtnk src> test mysrc 0 append type noteoff
+sndtnk src> action mysrc 0 1 append flag note off
+sndtnk src> map mysrc -l
+mysrc map #0:
+   type ( noteon )  1 actions:  flag ( note, on )
+   type ( noteoff )  1 actions:  flag ( note, off )
+
+
+
+    [in between the flag on & off we can apply actions to the flagged
+    instance only by saying "match" when initializing them. We want to
+    set the pitch & activate the instance for noteon events, and then
+    deactivate it again for noteoff events. The noteoff actions must
+    come before the flag removal action, so we insert them at position 0.]
+
+sndtnk src> action mysrc 0 0 append pitch frequency def match
+sndtnk src> action mysrc 0 0 append set 0 const 1 match
+sndtnk src> action mysrc 0 1 insert 0 set 0 const 0 match
+sndtnk src> map mysrc -l
+mysrc map #0:
+   type ( noteon )  3 actions:  flag ( note, on );  pitch ( Frequency (Hz), def, match );  set ( 0, const, 1.000, match )
+   type ( noteoff )  2 actions:  set ( 0, const, 0.000, match );  flag ( note, off )
+
+
+    [Make sure all instances are inactive before using this map setup,
+    otherwise none of them will be free to handle incoming events]
+
+sndtnk src>da mysrc
+
+
+
+    [To review this: noteon events will activate a flag on one
+    instance in mysrc (commandeering one that's already in use if
+    necessary), then set the pitch using the default scale, then set
+    control 0 (active) to 1.
+
+    noteoff events will set control 0 (active) to 0 and then turn off
+    the flag of the matching instance, freeing it again.
+
+    Note that the number of polyphonous voices mysrc has is equal to
+    the number of instances you give it.
+
+    So bang away on the MIDI keyboard and give it a go...]
+
+    
+
+    [Just for fun, let's map MIDI CC# 7 to control 2, volume,
+    limiting the range between 0 and 1]
+
+    [first we need to test for CC type events, note that the in the
+    case of CC events you can also test for the CC#]
+
+sndtnk src> test mysrc 0 append type cc 7
+
+    [now we create an action to set the volume control to the CC
+    value, after shifting and scaling it into the range 0-1]
+
+sndtnk src> action mysrc 0 2 append set volume ccvalue shift 0 1
+
+    [you should have the following line at the bottom of your map now]
+
+type ( cc, 7 )  1 actions:  set ( Volume, ccvalue, shift, 0.000000, 1.000000 )
+
+
+
+    [Now save your work, the map will get stored but not the ALSA
+    sequencer connection because that is done outside of Soundtank. So
+    next time you load mysrc you will need to attach the MIDI
+    controller to it again using aconnect.]
+
+sndtnk src> sv mysrc ~/mysrc.xml
+
+    
+     [to delete the object from soundtank, use rm]
+
+sndtnk src> rm mysrc
+
+     [and to load it again, the load command of course.
+     Pathnames in the save & load commands refer to the actual
+     directory heirarchy on your computer, starting from the directory
+     that you ran soundtank in. Whenever you give an rtobject pathname
+     it refers to the signal path heirarchy inside soundtank, starting
+     from the path your are in]
+
+sndtnk src> ld ~/mysrc.xml    
+
+
+****************End of Soundtank Tutorial*************************

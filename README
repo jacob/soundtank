@@ -1,0 +1,13 @@
+
+
+PLEASE READ:  doc/about-soundtank.txt
+
+NB: soundtank is only useful if you've installed LADSPA plugins.
+
+
+CVS USERS:
+
+Run the bootstrap script, make sure you have recent versions of all
+the programs mentioned in it.
+
+

@@ -1,0 +1,116 @@
+
+-----------An Introduction to the Soundtank Codebase for Developers----------
+
+This is an overview of the layout of the code to Soundtank for
+developers interested in working on it. This text is released with
+Soundtank under the same GPL license.
+
+
+
+
+--- Quick Warnings
+
+(1) If you have a directory called realtime_list in your local copy of
+    the src directory than you have not used the CVS option to omit
+    empty directories while checking out a copy of the source. I
+    believe it is -P.
+
+(2) The directory called input_map has been superceded by
+    event_map. Input map does have a description giving you a basic
+    idea of what's going on with MIDI event routing but the code
+    itself not used.
+
+(3) Soundtank has a realtime thread which does the live stuff, and an
+    administrative thread, which does everything else. These two
+    coordinate through IPC messages. When writing code we must always!
+    always! always! consider if there is a potential conflict with the
+    realtime processing. I call this look twice before crossing the
+    street; it's not hard but you have to do it every time or the
+    program will be fucked because it crosses the street a hundred
+    times a second.
+
+    Basically, we make a copy of the data structure that is live,
+    modify the copy, then message the rt thread to swap the two, after
+    it messages back that it has done so we deallocate the old
+    structure. There are cases where this is complicated (paths).
+
+
+
+--- Where to Start
+
+(1) Soundtank is a shell for audio work. It only has builtin commands
+    and they are stored in a directory called commands. Reading them
+    is a way to get at the project from the outside in.
+
+(2) Soundtank is written entirely in C. All the code modules operate
+    in some way on a set of application-wide data structures which are
+    stored in soundtank_structs.h. Reading this is a way to get at the
+    project from the top down.
+
+(3) The main() function is the first one in soundtank.c, it calls the
+    initialization function in sountank_startup.c (long and
+    complicated) and then does a simple loop to read user input from
+    the command-line. I use the GNU readline facility for this. The
+    rest of soundtank.c is functions that provide basic services
+    relating to the app-wide data structures.
+
+(4) Soundtank is based on a realtime dsp framework called the 
+    Realtime Path Framework which is described in the documentation
+    directory. Basically, there is the generic realtime object,
+    rtobject for short, in rtobject.c. The generic rtobject is paired
+    with a task-specific backend called the implementation object, imp
+    object for short. The imp objects are in the directory called
+    imp_objects; they are such things as ALSA inputs & outputs, the
+    LADSPA plugin wrapper, and so on. There isn't a plugin API beyond
+    LADSPA.
+
+(5) Signal Path rtobjects are collections of other rtobjects, similar
+    to UNIX directories. The difference is that they are ordered. The
+    order is the flow of audio signal through the path; one rtobject
+    makes a sound and only downstream objects can alter that
+    sound. The Signal Path rtobject provides a set of internal
+    channels which its member objects' audio ports can be attached
+    to. The implementation of Signal Paths is probably the most
+    difficult part of the code to read, it's in the Signal Path imp
+    object.
+
+(6) Every rtobject in Soundtank is inside the master signal path
+    rtobject, called main. This rtobject is a regular rtobject as much
+    as possible, but is special in some ways (ex: can't be removed).
+
+
+
+--- The Source Directories
+
+
+(commands)
+ 
+	 Holds builtin commands which users type into the
+	 shell. These should not do more than parse arguments and make
+	 Soundtank system calls.
+
+
+
+(event_map)
+
+	Contains the code that routes ALSA MIDI events and provides
+	user customizeable tests and actions to handle them.
+
+
+
+(imp_objects)
+
+	The backend code that provides application specific types of rtobjects.
+
+
+
+(util)
+
+	Generic utility functions which aren't related to the audio
+	nature of Soundtank. Generic linked list, array, string
+	parseing and so on. May be worth looking at as I am not a
+	graduate of any computer science program and this probably
+	contains mistakes.
+
+
+

@@ -1,0 +1,34 @@
+
+
+  To install this program, do the following...
+
+
+
+./configure
+make 
+make install (as root)
+
+
+
+
+  Soundtank has the following dependencies...
+
+
+- ALSA (the Advanded Linux Sound Architecture)
+	http://alsa-project.org
+	debian package: alsa-base & libasound2-dev
+
+
+- JACK (Jack Audio Connection Kit)
+	http://jackit.sf.net
+	debian package: jackd libjack0.80.0-dev
+
+
+- LIBXML2 (XML File Library)
+	http://xmlsoft.org/
+	 debian package: libxml2 & libxml2-dev
+
+
+- other things thare are pretty much standard: 
+	libncurses#-dev libpopt-dev libreadline#-dev
+

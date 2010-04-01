@@ -1,0 +1,60 @@
+
+
+-- GOAL: To make instruments for the Oxygen8. It has 8 cc nobs, a
+   slider, a mod wheel, a pitch wheel, and of course, 2 octaves of
+   keys.
+
+
+- in overwrite mode mute & unmute doesn't work
+
+-- add event maps to namespace. => all event maps need a name. Tests &
+   actions as well. ln command? or just use at. Controls & data ports
+   as well. But namespaces must be kept in order. Each rtobject has
+   ./controls ./ports ./maps, maps has ./tests ./actions. ???
+
+
+- in set action, when specifying range for shifting, accept reverse
+  order range as inversion. IE, upper bound followed by lower bound =>
+  invert value range.
+
+- multiple data port connections
+
+- more map stuff, copying events to jump to many targets
+
+- some thoughts: dummy controls, att control1 control2 updates map,
+  changing map elements in place
+  
+- instances:  re-add owner-object index for debugging readout,
+  readout of proc index when listing rtobjects?
+
+- must fix fxn to generate array from command line using dynamic
+  allocation
+
+- all commands need standardization, to allow for tab-completion. Need
+  a structure with: name, short description, help description, fxn,
+  option autocompletion fxn
+
+- auto completion of command names
+
+- auto completion of command arguments
+
+- make ogg file imp object
+
+- standardize imp objects??? 
+
+- when creating SRC rtobjects, check if they are really FILTER rtobjects
+  and change major type accordingly.
+
+- ls -qf : show only ladspa plugins with frequency controls
+
+- make control rtobject : contains a description of the controls of a
+  particular piece of hardware, used in creating auto attachments.
+
+- ld file.xml -n (name as) name-of-created-rtobject, -f find rtobject
+  in xml file, save append to file option
+
+- use LADSPA run-adding functionality when available /*do enough
+  plugins do this for it to be worthwhile?*/
+
+
+

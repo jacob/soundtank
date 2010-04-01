@@ -1,0 +1,67 @@
+<?xml version="1.0"?>
+<SoundtankCollection xmlns:sndtnk="http://soundtank.sourceforge.net/xml/soundtank_rtobject_xml_v1.0.dtd" Version="1.0">
+
+
+
+<RTObject Version="2.0" Name="/src/basic-instrument" MajorType="path" ImpType="path">
+
+  <RTInstance/>
+  <EventMap>
+    <MapTest Name="type"><ImpArg Value="cc"/><ImpArg Value="64"/>
+       <MapAction Name="jump"><ImpArg Value="child"/><ImpArg Value="out1"/></MapAction></MapTest>
+    
+    <MapTest Name="true">
+       <MapAction Name="jump"><ImpArg Value="child"/><ImpArg Value="sine"/></MapAction></MapTest>
+    </EventMap></RTObject>
+
+
+
+<RTObject Version="2.0" Name="/src/basic-instrument/sine" MajorType="src" ImpType="ladspa">
+
+  <ImpArg Value="sine_fcac"/>
+  <PortDesc PortTargetName="*" PortTargetIndex="1"/>
+  <RTInstance>
+    <ControlValue Value="0.000000"/>
+    <ControlValue Value="0.000000"/>
+    <ControlValue Value="1.000000"/>
+    <ControlValue Value="704.000000"/>
+    <ControlValue Value="1.000000"/></RTInstance>
+  <RTInstance>
+    <ControlValue Value="0.000000"/>
+    <ControlValue Value="0.000000"/>
+    <ControlValue Value="1.000000"/>
+    <ControlValue Value="586.666626"/>
+    <ControlValue Value="1.000000"/></RTInstance>
+  <RTInstance>
+    <ControlValue Value="0.000000"/>
+    <ControlValue Value="0.000000"/>
+    <ControlValue Value="1.000000"/>
+    <ControlValue Value="880.000000"/>
+    <ControlValue Value="1.000000"/></RTInstance>
+  <EventMap>
+    <MapTest Name="type"><ImpArg Value="noteon"/>
+       <MapAction Name="flag"><ImpArg Value="note"/><ImpArg Value="on"/></MapAction>
+       <MapAction Name="pitch"><ImpArg Value="Frequency (Hz)"/><ImpArg Value="def"/><ImpArg Value="match"/></MapAction>
+       <MapAction Name="set"><ImpArg Value="Active"/><ImpArg Value="const"/><ImpArg Value="1.000"/><ImpArg Value="match"/></MapAction></MapTest>
+    
+    <MapTest Name="type"><ImpArg Value="noteoff"/>
+       <MapAction Name="set"><ImpArg Value="Active"/><ImpArg Value="const"/><ImpArg Value="0.000"/><ImpArg Value="match"/></MapAction>
+       <MapAction Name="flag"><ImpArg Value="note"/><ImpArg Value="off"/></MapAction></MapTest>
+    </EventMap></RTObject>
+
+
+
+<RTObject Version="2.0" Name="/src/basic-instrument/out1" MajorType="local_out" ImpType="inline">
+
+  <PortDesc PortTargetName="*" PortTargetIndex="1"/>
+  <PortDesc PortTargetName="/out" PortTargetIndex="0"/>
+  <RTInstance>
+    <ControlValue Value="1.000000"/>
+    <ControlValue Value="0.000000"/>
+    <ControlValue Value="1.000000"/></RTInstance>
+  <EventMap>
+    <MapTest Name="type"><ImpArg Value="cc"/><ImpArg Value="64"/>
+       <MapAction Name="set"><ImpArg Value="Volume"/><ImpArg Value="ccvalue"/><ImpArg Value="shift"/><ImpArg Value="0.000000"/><ImpArg Value="1.000000"/></MapAction></MapTest>
+    </EventMap></RTObject>
+
+</SoundtankCollection>

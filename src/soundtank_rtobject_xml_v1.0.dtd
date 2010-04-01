@@ -1,0 +1,51 @@
+<!-- Soundtank XML Format Version 1.0 -->
+
+<!ELEMENT SoundtankCollection (#PCDATA)>
+<!ATTLIST SoundtankCollection  
+          Version CDATA #REQUIRED
+>
+
+<!ELEMENT RTObject (Description?,Loaded?,ImpArg*,ImpState,PortDesc*,RTInstance*,EventMap*)>
+
+<!ATTLIST RTObject 
+          Version     CDATA  #REQUIRED
+          Name        CDATA  #REQUIRED
+          MajorType   CDATA  #REQUIRED
+          ImpType     CDATA  #REQUIRED
+> 
+
+<!ELEMENT Description (#PCDATA)>
+
+<!ELEMENT Loaded>
+<!ATTLIST Loaded
+          Path  CDATA #REQUIRED
+>
+          
+<!ELEMENT ImpArg>
+<!ATTLIST ImpArg  
+          Value  CDATA #REQUIRED
+>
+
+<!ELEMENT PortDesc>
+<!ATTLIST PortDesc 
+          PortName   CDATA #IMPLIED
+          PortTargetName  CDATA #REQUIRED
+          PortTargetIndex  CDATA #REQUIRED
+>
+
+<!ELEMENT RTInstance  (ControlValue*)>
+
+<!ELEMENT ControlValue>
+<!ATTLIST ControlValue Value CDATA #REQUIRED>
+
+<!ELEMENT EventMap (MapTest*)>
+<!ATTLIST EventMap Name CDATA #IMPLIED>
+
+<!ELEMENT MapTest (ImpArg*,MapAction*)>
+<!ATTLIST MapTest Name CDATA #REQUIRED>
+
+<!ELEMENT MapAction (ImpArg*)>
+<!ATTLIST MapAction Name CDATA #REQUIRED>
+
+<!ELEMENT ExecCommand>
+<!ATTLIST ExecCommand Command CDATA #REQUIRED>
