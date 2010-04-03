@@ -1,0 +1,9 @@
+Makefile
+config.h
+config.log
+config.status
+src/.deps/
+src/Makefile
+src/*.o
+src/soundtank
+stamp-h1
